@@ -4,448 +4,238 @@
 
 ### Enterprise-Grade Retrieval-Augmented Generation (RAG) Platform
 
-Build AI-powered knowledge assistants capable of ingesting, indexing, retrieving, and reasoning over your documents using **Google Gemini**, **LangGraph**, **FastAPI**, **Next.js**, **PostgreSQL**, and **Qdrant**.
+Build AI-powered knowledge assistants capable of ingesting, indexing, retrieving, and reasoning over your documents using **Google Gemini**, **LangGraph**, **FastAPI**, **Next.js 15**, **PostgreSQL**, and **Qdrant**.
 
-<p>
+<p align="center">
+  <a href="https://productionragagent.vercel.app"><strong>🌐 Live Web App</strong></a> •
+  <a href="https://production-rag-agent.onrender.com/docs"><strong>📖 API Swagger Docs</strong></a> •
+  <a href="https://production-rag-agent.onrender.com/health"><strong>🩺 Health Endpoint</strong></a>
+</p>
 
-![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-Production-009688?logo=fastapi)
-![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
-![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-336791?logo=postgresql)
-![Qdrant](https://img.shields.io/badge/Qdrant-Vector%20Database-red)
-![Google Gemini](https://img.shields.io/badge/Google-Gemini-orange?logo=google)
-
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-15-black?logo=next.js" alt="Next.js 15" />
+  <img src="https://img.shields.io/badge/FastAPI-Production-009688?logo=fastapi" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-blue?logo=python" alt="Python" />
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker" alt="Docker" />
+  <img src="https://img.shields.io/badge/PostgreSQL-Neon%20%2F%20Supabase-336791?logo=postgresql" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Qdrant-Vector%20Database-DC2626?logo=qdrant" alt="Qdrant" />
+  <img src="https://img.shields.io/badge/Google-Gemini%202.5-orange?logo=google" alt="Google Gemini" />
 </p>
 
 </div>
 
 ---
 
-# 📖 Overview
+## 🌐 Live Production Deployments
 
-Production RAG Agent is a full-stack enterprise-ready Retrieval-Augmented Generation (RAG) system designed to build intelligent AI assistants over private documents.
-
-Instead of relying only on an LLM's internal knowledge, the application retrieves relevant information from your uploaded documents using semantic search, injects that context into the prompt, and generates grounded responses with source citations.
-
-The project emphasizes production engineering practices including resilient document ingestion, deterministic chunking, duplicate detection, retry handling, crash recovery, and scalable vector search.
-
----
-
-# ⭐ Highlights
-
-- Enterprise-grade RAG Architecture
-- Multi-format Document Ingestion
-- Google Gemini Integration
-- LangGraph-based AI Pipeline
-- FastAPI Backend
-- Next.js + TypeScript Frontend
-- PostgreSQL Metadata Storage
-- Qdrant Vector Database
-- Adaptive Semantic Chunking
-- Duplicate Document Detection
-- Resume-safe Indexing
-- Streaming AI Chat
-- Source Citations
-- Docker Deployment
-- Production Health Monitoring
+| Component | Platform | URL | Status |
+|---|---|---|---|
+| **Frontend UI** | Vercel | [https://productionragagent.vercel.app](https://productionragagent.vercel.app) | 🟢 Live |
+| **Backend API** | Render | [https://production-rag-agent.onrender.com](https://production-rag-agent.onrender.com) | 🟢 Live |
+| **API Docs** | Swagger | [https://production-rag-agent.onrender.com/docs](https://production-rag-agent.onrender.com/docs) | 🟢 Live |
+| **Health API** | FastAPI | [https://production-rag-agent.onrender.com/health](https://production-rag-agent.onrender.com/health) | 🟢 Live |
 
 ---
 
-# ✨ Features
+## 📖 Overview
 
-## 📂 Document Processing
+**Production RAG Agent** is a full-stack, enterprise-ready Retrieval-Augmented Generation (RAG) platform designed to build intelligent AI assistants over private documents and enterprise knowledge bases.
 
-Supports uploading and indexing:
+Instead of hallucinating or relying solely on training data, the application performs multi-stage semantic vector search over uploaded documents, constructs grounded context using **LangGraph**, and generates streaming responses with exact source citations powered by **Google Gemini**.
 
-- PDF
-- DOCX
-- PPTX
-- XLSX
-- CSV
-- TXT
-- Markdown
-
-Each uploaded document is automatically:
-
-- Validated
-- Parsed
-- Chunked
-- Embedded
-- Indexed
-- Stored
+The project incorporates production engineering best practices including:
+- Multi-format parsing (PDF, DOCX, PPTX, XLSX, TXT, Markdown)
+- Resilient batch embedding with exponential backoff & jitter
+- Deterministic chunk hashing & deduplication
+- Crash recovery & pipeline resume
+- Async SQLAlchemy with Neon / Supabase connection pooling
+- Cloud Qdrant vector index management
 
 ---
 
-## 🧠 Adaptive Semantic Chunking
-
-Production-friendly chunking pipeline featuring:
-
-- Recursive chunk splitting
-- Configurable chunk size
-- Chunk overlap
-- Deterministic Chunk IDs
-- Duplicate detection
-- Resume interrupted indexing
-
----
-
-## 🤖 Retrieval-Augmented Generation
-
-Instead of sending the whole document to the LLM:
-
-1. User asks a question.
-2. Semantic search retrieves relevant chunks.
-3. LangGraph constructs context.
-4. Google Gemini generates grounded answers.
-5. Sources are returned alongside the response.
-
----
-
-## ⚡ Resilient Embedding Pipeline
-
-Designed to work reliably with external AI providers.
-
-Features include:
-
-- Dynamic Batch Sizing
-- Exponential Backoff
-- Retry with Jitter
-- Adaptive Batch Reduction
-- Concurrency Control
-- Duplicate-safe Processing
-
-> **Note:** When using the Google Gemini Free Tier, very large documents may require several minutes to finish embedding due to provider quota limits. Background asynchronous processing is planned in a future release.
-
----
-
-## 💬 AI Chat
-
-Supports:
-
-- Conversational RAG
-- Streaming Responses
-- Markdown Rendering
-- Code Blocks
-- Copy Response
-- Source Citations
-
----
-
-## 📁 Document Management
-
-- Upload Documents
-- Delete Documents
-- Duplicate Detection
-- Already Indexed Detection
-- Chunk Statistics
-- Document Metadata
-
----
-
-## 📊 Dashboard
-
-Real-time monitoring for:
-
-- Backend API
-- Google Gemini
-- PostgreSQL
-- Qdrant
-- Document Count
-- Chunk Count
-- Storage Usage
-
----
-
-# 🏗 Architecture
+## 🏗 Architecture
 
 ```
-                     User
-                       │
-                       ▼
-             Next.js Frontend
-                       │
-             REST / Streaming API
-                       │
-                       ▼
-               FastAPI Backend
-                       │
-       ┌───────────────┼───────────────┐
-       │               │               │
-       ▼               ▼               ▼
- Google Gemini     PostgreSQL      Qdrant
-      │             Metadata     Vector Store
-      └───────────────┬───────────────┘
-                      ▼
-                 LangGraph RAG
+                      User (Browser)
+                            │
+                            ▼
+           Next.js 15 Frontend (Vercel / Port 3000)
+                            │
+                  /api/* Proxy Rewrite
+                            │
+                            ▼
+            FastAPI Backend (Render / Port 8000)
+                            │
+        ┌───────────────────┼───────────────────┐
+        │                   │                   │
+        ▼                   ▼                   ▼
+ Google Gemini         PostgreSQL            Qdrant
+(LLM & Embeddings)  (Metadata & Chat)    (Vector Search)
+                    (Neon / Supabase)    (Qdrant Cloud)
+                            │
+                            ▼
+                      LangGraph RAG
 ```
 
 ---
 
-# ⚙ Technology Stack
+## ⭐ Key Features
 
-## Frontend
+### 📂 Multi-Format Document Ingestion
+- Upload and index **PDF**, **DOCX**, **PPTX**, **XLSX**, **CSV**, **TXT**, and **Markdown**.
+- Automatic file validation, sha256 hash deduplication, and document status lifecycle tracking (`pending` → `parsing` → `chunking` → `embedding` → `indexing` → `completed`).
 
-- Next.js
-- React
-- TypeScript
-- Tailwind CSS
+### 🧠 Adaptive Semantic Chunking
+- Recursive chunk splitting with configurable sizes and overlap.
+- Deterministic chunk IDs to prevent duplicate embeddings.
+- Automatic resume capability for interrupted or failed indexing runs.
 
-## Backend
+### 🤖 LangGraph Context Construction & Gemini Reasoning
+- Multi-step reasoning pipeline built with LangGraph.
+- Uses `gemini-2.5-flash` for low-latency, high-accuracy reasoning.
+- High-dimensional vector representations with `models/gemini-embedding-001` (3072 dimensions).
 
-- FastAPI
-- LangGraph
-- SQLAlchemy
-- Pydantic
+### 💬 Real-Time Streaming AI Chat
+- Server-Sent Events (SSE) token streaming for responsive UX.
+- Rich Markdown rendering, syntax-highlighted code blocks, and one-click copy.
+- Inline source citations and relevance scores.
 
-## AI
-
-- Google Gemini
-- Semantic Embeddings
-- Retrieval-Augmented Generation
-
-## Databases
-
-- PostgreSQL
-- Qdrant Vector Database
-
-## DevOps
-
-- Docker
-- Docker Compose
+### 📊 Real-Time Health & Storage Dashboard
+- Live dependency status checks for FastAPI, Google Gemini, PostgreSQL, and Qdrant.
+- Real-time document count, chunk count, and storage utilization metrics.
 
 ---
 
-# 📸 Application Preview
+## ⚙ Technology Stack
 
-## Dashboard
-
-> ![Dashboard](./screenshots/dashboard.png)
-
----
-
-## Upload Documents
-
-> ![Upload Documents](./screenshots/upload.png)
+- **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Lucide Icons
+- **Backend**: FastAPI, LangGraph, LangChain, Pydantic v2, SQLAlchemy 2.0 (Async)
+- **Vector Database**: Qdrant (Qdrant Cloud / Docker)
+- **Relational Database**: PostgreSQL (Neon Serverless / Supabase / Local)
+- **AI Models**: Google Gemini 2.5 Flash & Gemini Text Embedding 001
+- **Deployment**: Render (Docker Backend), Vercel (Next.js Frontend)
 
 ---
 
-## Documents
+## 🚀 Quick Start (Local Development)
 
-> ![Documents](./screenshots/documents.png)
-
----
-
-## AI Chat
-
-> ![AI Chat](./screenshots/chat.png)
-
----
-
-# 🚀 Getting Started
-
-## Clone Repository
+### 1. Clone Repository
 
 ```bash
-git clone https://github.com/rounakkumarsah/Production-RAG-Agent.git
-
+git clone https://github.com/Mohityadav55199/Production-RAG-Agent.git
 cd Production-RAG-Agent
 ```
 
----
+### 2. Configure Backend Environment
 
-## Configure Environment
+Create `backend/.env` (copy from `backend/.env.example`):
 
-Create:
+```ini
+# Google Gemini
+GOOGLE_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_EMBEDDING_MODEL=models/gemini-embedding-001
+EMBEDDING_DIMENSION=3072
 
+# PostgreSQL (Neon, Supabase, or Local)
+DATABASE_URL=postgresql://user:password@ep-xyz.neon.tech/neondb?sslmode=require
+
+# Qdrant (Qdrant Cloud or Local)
+QDRANT_URL=https://your-cluster.us-east-1.aws.cloud.qdrant.io:6333
+QDRANT_API_KEY=your_qdrant_api_key
+QDRANT_COLLECTION=documents
 ```
-.env
 
-backend/.env
-```
-
-Copy values from:
-
-```
-.env.example
-
-backend/.env.example
-```
-
-Configure:
-
-- Google Gemini API Key
-- PostgreSQL
-- Qdrant
-
----
-
-## Start Backend
+### 3. Run with Docker Compose (Recommended)
 
 ```bash
 cd backend
-
 docker compose up --build
 ```
 
----
-
-## Start Frontend
+### 4. Or Run Backend Manually
 
 ```bash
-cd ..
+cd backend
+python -m venv .venv
 
+# On Windows:
+.\.venv\Scripts\Activate.ps1
+# On macOS/Linux:
+source .venv/bin/activate
+
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+### 5. Run Frontend
+
+```bash
+# In the project root directory
 npm install
-
 npm run dev
 ```
 
----
-
-Open:
-
-Frontend
-
-```
-http://localhost:3000
-```
-
-Backend
-
-```
-http://localhost:8000
-```
-
-Swagger API
-
-```
-http://localhost:8000/docs
-```
+- **Frontend UI**: `http://localhost:3000`
+- **Backend API**: `http://localhost:8000`
+- **Swagger Documentation**: `http://localhost:8000/docs`
 
 ---
 
-# 📂 Project Structure
+## ☁ Cloud Deployment Guide
+
+### Part 1: Deploy Backend on Render (Docker)
+1. Log in to [Render Dashboard](https://dashboard.render.com/) → **New +** → **Web Service**.
+2. Connect your repository: `Mohityadav55199/Production-RAG-Agent`.
+3. Configure settings:
+   - **Root Directory**: `backend`
+   - **Runtime**: `Docker`
+4. Add Environment Variables:
+   - `GOOGLE_API_KEY`: Your Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+   - `DATABASE_URL`: Your PostgreSQL URL from [Neon](https://neon.tech) or [Supabase](https://supabase.com)
+   - `QDRANT_URL`: Your cluster URL from [Qdrant Cloud](https://cloud.qdrant.io)
+   - `QDRANT_API_KEY`: Your Qdrant Cloud API key
+5. Click **Create Web Service**. Your backend will be live at `https://production-rag-agent.onrender.com`.
+
+### Part 2: Deploy Frontend on Vercel
+1. Log in to [Vercel](https://vercel.com/new) and import `Mohityadav55199/Production-RAG-Agent`.
+2. Framework Preset: **Next.js** (Root Directory: `./`).
+3. Add Environment Variable:
+   - `BACKEND_URL`: `https://production-rag-agent.onrender.com` *(your Render backend URL)*
+4. Click **Deploy**.
+
+---
+
+## 📂 Project Structure
 
 ```
 Production-RAG-Agent/
-
-├── app/
-├── backend/
+├── app/                        # Next.js 15 App Router pages
+│   ├── chat/                   # AI Chat interface
+│   ├── collections/            # Knowledge collections
+│   ├── dashboard/              # Metrics & health status
+│   ├── documents/              # Document management & uploads
+│   └── page.tsx                # Homepage redirect
+├── backend/                    # FastAPI Backend
 │   ├── app/
-│   ├── services/
-│   ├── api/
-│   ├── docker-compose.yml
-│   └── requirements.txt
-│
-├── components/
-├── lib/
-├── public/
-├── package.json
-├── next.config.ts
+│   │   ├── api/                # REST endpoints (/health, /upload, /query, etc.)
+│   │   ├── db/                 # PostgreSQL & Qdrant models and connections
+│   │   ├── schemas/            # Pydantic data schemas
+│   │   ├── services/           # Ingestion, embedding, chunking, & LangGraph RAG
+│   │   └── config.py           # Environment settings & URL sanitization
+│   ├── Dockerfile              # Multi-stage production container
+│   ├── requirements.txt        # Python dependencies
+│   └── docker-compose.yml      # Local dev stack
+├── components/                 # Reusable React UI components
+├── lib/                        # Client API hooks & utils
+├── render.yaml                 # 1-Click Render blueprint
+├── vercel.json                 # Vercel configuration
 └── README.md
 ```
 
 ---
 
-# 🔥 Production Engineering Features
+## 📄 License
 
-✅ Deterministic Chunk IDs
-
-✅ Duplicate Document Detection
-
-✅ Resume Interrupted Indexing
-
-✅ Adaptive Batch Embedding
-
-✅ Exponential Backoff & Retry
-
-✅ Dynamic Batch Reduction
-
-✅ Similarity Threshold Filtering
-
-✅ Streaming Responses
-
-✅ Health Monitoring
-
-✅ Dockerized Deployment
-
----
-
-# 📈 Roadmap
-
-- [ ] Background Workers
-- [ ] Async Upload Queue
-- [ ] Redis Cache
-- [ ] User Authentication
-- [ ] Multi-Tenant Support
-- [ ] Role Based Access Control
-- [ ] Observability Dashboard
-- [ ] Kubernetes Deployment
-- [ ] CI/CD Pipeline
-- [ ] Automated Evaluation Suite
-
----
-
-# 🎯 Learning Objectives
-
-This project demonstrates practical experience with:
-
-- Retrieval-Augmented Generation (RAG)
-- AI Engineering
-- Vector Databases
-- Semantic Search
-- LangGraph Workflows
-- Google Gemini APIs
-- Production FastAPI Development
-- Full Stack AI Applications
-- Docker Deployment
-- Enterprise Software Architecture
-
----
-
-# 🤝 Contributing
-
-Contributions are welcome!
-
-If you'd like to improve the project:
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Open a Pull Request
-
----
-
-# 📄 License
-
-This project is licensed under the MIT License.
-
----
-
-# 👨‍💻 Author
-
-## Rounak Kumar Sah
-
-**AI Automation Engineer | AI Agent Developer | GenAI Engineer**
-
-### Tech Stack
-
-- Python
-- FastAPI
-- LangGraph
-- Next.js
-- TypeScript
-- PostgreSQL
-- Qdrant
-- Docker
-- Google Gemini
-- n8n Automation
-
----
-
-<div align="center">
-
-⭐ If you found this project useful, please consider giving it a Star.
-
-</div>
+This project is licensed under the **MIT License**.
