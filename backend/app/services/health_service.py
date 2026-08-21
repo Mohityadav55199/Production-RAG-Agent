@@ -50,6 +50,21 @@ async def _check_postgres(settings) -> ServiceStatus:
             raw_url = settings.DATABASE_URL
             if "+asyncpg" in raw_url:
                 raw_url = raw_url.replace("+asyncpg", "")
+            elif raw_url.startswith("postgres://"):
+                raw_url = raw_url.replace("postgres://", "postgresql://", 1)
+            
+            from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+            parsed = urlparse(raw_url)
+            if parsed.query:
+                query_params = parse_qsl(parsed.query)
+                new_params = []
+                for k, v in query_params:
+                    if k == "sslmode":
+                        new_params.append(("ssl", v))
+                    else:
+                        new_params.append((k, v))
+                raw_url = urlunparse(parsed._replace(query=urlencode(new_params)))
+
             conn: asyncpg.Connection = await asyncio.wait_for(
                 asyncpg.connect(raw_url),
                 timeout=5,
