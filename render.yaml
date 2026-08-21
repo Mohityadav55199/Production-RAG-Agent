@@ -1,0 +1,36 @@
+services:
+  # FastAPI RAG Backend
+  - type: web
+    name: production-rag-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_EMBEDDING_MODEL
+        value: models/gemini-embedding-001
+      - key: EMBEDDING_DIMENSION
+        value: 3072
+      - key: DATABASE_URL
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: QDRANT_COLLECTION
+        value: documents
+      - key: CORS_ORIGINS
+        value: '["*"]'
+      - key: MAX_UPLOAD_SIZE_MB
+        value: 50
+      - key: MAX_FILES_PER_UPLOAD
+        value: 10
