@@ -56,12 +56,23 @@ async def _check_postgres(settings) -> ServiceStatus:
             from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
             parsed = urlparse(raw_url)
             if parsed.query:
+                allowed_params = {
+                    "ssl", "timeout", "command_timeout", "statement_cache_size",
+                    "max_cached_statement_lifetime", "max_cacheable_statement_size",
+                    "server_settings"
+                }
                 query_params = parse_qsl(parsed.query)
                 new_params = []
+                ssl_set = False
                 for k, v in query_params:
                     if k == "sslmode":
-                        new_params.append(("ssl", v))
-                    else:
+                        if v != "disable" and not ssl_set:
+                            new_params.append(("ssl", "require"))
+                            ssl_set = True
+                    elif k == "ssl":
+                        new_params.append((k, v))
+                        ssl_set = True
+                    elif k in allowed_params:
                         new_params.append((k, v))
                 raw_url = urlunparse(parsed._replace(query=urlencode(new_params)))
 
