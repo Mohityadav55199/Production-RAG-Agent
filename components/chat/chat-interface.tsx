@@ -6,20 +6,31 @@ import {
   Bot,
   Copy,
   Check,
+  ImagePlus,
   Loader2,
   MessageSquarePlus,
   RotateCcw,
   Send,
   Square,
   User,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  MAX_CHAT_IMAGES,
+  imageFilesFrom,
+  prepareImage,
+  releaseImages,
+  type AttachedImage,
+} from "@/lib/api/images";
 import { streamQuery, type AnswerStyle } from "@/lib/api/query";
 import { parseSourceKey } from "@/lib/api/sources";
 import { SourceSelect, useKnowledgeSources } from "@/components/chat/source-select";
 import { useApp } from "@/lib/context/app-context";
 import { suggestedQuestions, type ChatMessage } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import { AuthImage } from "@/components/ui/auth-image";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { SafeMarkdown } from "@/components/ui/safe-markdown";
 import {
   Card,
@@ -34,6 +45,8 @@ import { cn } from "@/lib/utils";
 function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
+
+const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 
 interface ChatInterfaceProps {
   /** "documents" = uploaded files only, "projects" = imported code projects only. */
@@ -55,6 +68,18 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Images attached to the next question
+  const [attachments, setAttachments] = useState<AttachedImage[]>([]);
+  const [preparing, setPreparing] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [lightbox, setLightbox] = useState<{ id: string; title: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastRequestRef = useRef<{ images: AttachedImage[] } | null>(null);
+
+  const defaultImageQuestion = codeMode
+    ? "Explain what this screenshot shows and how it relates to the code."
+    : "Describe this image and explain anything in it that relates to my documents.";
+
   const starterQuestions = codeMode
     ? [
         "Explain this project: what it does, its architecture and main components.",
@@ -70,8 +95,44 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
     setConversationId(null);
   }, [scope]);
 
+  const addImages = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      const room = MAX_CHAT_IMAGES - attachments.length;
+      if (room <= 0) {
+        toast.error(`You can attach up to ${MAX_CHAT_IMAGES} images to one question.`);
+        return;
+      }
+      if (files.length > room) {
+        toast.info(`Only ${MAX_CHAT_IMAGES} images fit in one question. The extra ones were skipped.`);
+      }
+      setPreparing(true);
+      const results = await Promise.allSettled(files.slice(0, room).map(prepareImage));
+      const ready: AttachedImage[] = [];
+      for (const result of results) {
+        if (result.status === "fulfilled") ready.push(result.value);
+        else toast.error(result.reason instanceof Error ? result.reason.message : "Could not add that image.");
+      }
+      setAttachments((prev) => [...prev, ...ready].slice(0, MAX_CHAT_IMAGES));
+      setPreparing(false);
+    },
+    [attachments.length]
+  );
+
+  const removeAttachment = (id: string) => {
+    setAttachments((prev) => {
+      releaseImages(prev.filter((image) => image.id === id));
+      return prev.filter((image) => image.id !== id);
+    });
+  };
+
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+
   const startNewChat = () => {
     abortRef.current?.abort();
+    releaseImages(attachments);
+    messages.forEach((message) => message.attachments && releaseImages(message.attachments));
+    setAttachments([]);
     setMessages([]);
     setConversationId(null);
     setLastQuery(null);
@@ -90,13 +151,18 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
 
   const sendQuery = useCallback(
     async (query: string, retry = false) => {
-      if (!query.trim() || isStreaming) return;
+      // A retry re-sends the images of the failed question; a new question sends what is attached now
+      const images = retry ? (lastRequestRef.current?.images ?? []) : attachments;
+      const text = query.trim() || (images.length > 0 ? defaultImageQuestion : "");
+      if (!text || isStreaming || preparing) return;
 
-      setLastQuery(query);
+      setLastQuery(text);
+      lastRequestRef.current = { images };
       const userMessage: ChatMessage = {
         id: createId(),
         role: "user",
-        content: query.trim(),
+        content: text,
+        attachments: images.map(({ id, name, previewUrl }) => ({ id, name, previewUrl })),
       };
 
       const assistantId = createId();
@@ -118,13 +184,15 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
       }
 
       setInput("");
+      if (!retry) setAttachments([]);       // previews live on in the message, so they are not released here
       setIsStreaming(true);
       abortRef.current = new AbortController();
 
       try {
         const { project, documentId } = parseSourceKey(scope);
         await streamQuery({
-          query: query.trim(),
+          query: text,
+          images: images.map(({ mime, data }) => ({ mime, data })),
           collectionId: activeCollectionId,
           conversationId,
           answerStyle,
@@ -190,7 +258,7 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
         abortRef.current = null;
       }
     },
-    [activeCollectionId, isStreaming, scope, answerStyle, conversationId, mode]
+    [activeCollectionId, isStreaming, preparing, attachments, defaultImageQuestion, scope, answerStyle, conversationId, mode]
   );
 
   const stopGeneration = () => {
@@ -205,7 +273,31 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
 
   return (
     <div className="flex h-[calc(100vh-12rem)] flex-col gap-4">
-      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <Card
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+        onDragOver={(e) => {
+          if (hasFiles(e) && !isStreaming) {
+            e.preventDefault();
+            setDragging(true);
+          }
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+        }}
+        onDrop={(e) => {
+          setDragging(false);
+          const files = imageFilesFrom(e.dataTransfer);
+          if (files.length > 0 && !isStreaming) {
+            e.preventDefault();
+            void addImages(files);
+          }
+        }}
+      >
+        {dragging && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/10 text-sm font-medium text-primary">
+            Drop images here to ask about them
+          </div>
+        )}
         <CardHeader className="space-y-3 border-b border-border/60 pb-4">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -343,7 +435,22 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                           )}
                         </div>
                       ) : (
-                        message.content
+                        <>
+                          {message.attachments && message.attachments.length > 0 && (
+                            <div className="mb-2 flex flex-wrap gap-2">
+                              {message.attachments.map((image) => (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  key={image.id}
+                                  src={image.previewUrl}
+                                  alt={image.name}
+                                  className="max-h-40 max-w-full rounded-lg border border-primary-foreground/20 object-cover"
+                                />
+                              ))}
+                            </div>
+                          )}
+                          {message.content}
+                        </>
                       )}
 
                       {message.error && (
@@ -376,6 +483,25 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                                   {source.chunkText}
                                 </p>
                               )}
+                              {source.images && source.images.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {source.images.map((assetId, n) => (
+                                    <button
+                                      key={assetId}
+                                      type="button"
+                                      onClick={() => setLightbox({ id: assetId, title: source.documentName ?? "Image" })}
+                                      aria-label={`View image ${n + 1} from ${source.documentName ?? "the document"}`}
+                                      className="overflow-hidden rounded-md border outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+                                    >
+                                      <AuthImage
+                                        assetId={assetId}
+                                        alt={`Image ${n + 1} from ${source.documentName ?? "the document"}`}
+                                        className="size-20 object-cover"
+                                      />
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -406,6 +532,25 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
           </div>
 
           <div className="border-t border-border/60 p-4">
+            {(attachments.length > 0 || preparing) && (
+              <div className="mb-3 flex flex-wrap items-center gap-2" aria-label="Attached images">
+                {attachments.map((image) => (
+                  <div key={image.id} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={image.previewUrl} alt={image.name} className="size-16 rounded-lg border object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(image.id)}
+                      aria-label={`Remove ${image.name}`}
+                      className="absolute -right-1.5 -top-1.5 rounded-full border bg-background p-0.5 shadow-sm hover:bg-muted"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ))}
+                {preparing && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Preparing image" />}
+              </div>
+            )}
             <form
               className="flex gap-2"
               onSubmit={(e) => {
@@ -413,13 +558,43 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                 sendQuery(input);
               }}
             >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={IMAGE_ACCEPT}
+                multiple
+                className="hidden"
+                data-testid="chat-image-input"
+                onChange={(e) => {
+                  void addImages(Array.from(e.target.files ?? []));
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isStreaming || preparing || attachments.length >= MAX_CHAT_IMAGES}
+                aria-label="Attach an image"
+                title="Attach an image (you can also paste or drop one)"
+              >
+                <ImagePlus className="size-4" />
+              </Button>
               <Textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onPaste={(e) => {
+                  const files = imageFilesFrom(e.clipboardData);
+                  if (files.length > 0) {
+                    e.preventDefault();
+                    void addImages(files);
+                  }
+                }}
                 placeholder={
                   codeMode
-                    ? "Ask about the code, architecture, files…"
-                    : "Ask a question about your documents…"
+                    ? "Ask about the code, or paste a screenshot of an error…"
+                    : "Ask about your documents, or paste or attach an image…"
                 }
                 className="min-h-[44px] resize-none"
                 rows={1}
@@ -441,7 +616,12 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                   <Square className="size-4" />
                 </Button>
               ) : (
-                <Button type="submit" size="icon" disabled={!input.trim()}>
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={(!input.trim() && attachments.length === 0) || preparing}
+                  aria-label="Send"
+                >
                   {isStreaming ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : (
@@ -453,6 +633,7 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
           </div>
         </CardContent>
       </Card>
+      <ImageLightbox assetId={lightbox?.id ?? null} title={lightbox?.title} onClose={() => setLightbox(null)} />
     </div>
   );
 }
