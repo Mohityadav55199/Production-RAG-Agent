@@ -10,6 +10,13 @@ from pydantic import BaseModel, Field
 
 # ── Request ───────────────────────────────────────────────────────────────────
 
+class ImageInput(BaseModel):
+    """One image attached to a question. The server re-encodes it; the declared type is not trusted."""
+
+    mime: Literal["image/png", "image/jpeg", "image/webp", "image/gif"]
+    data: str = Field(..., max_length=6_000_000, description="Base64 image bytes, without a data: prefix.")
+
+
 class QueryRequest(BaseModel):
     """Body accepted by POST /query."""
 
@@ -39,6 +46,11 @@ class QueryRequest(BaseModel):
     model: str | None = Field(
         None,
         description="Optional LLM model override (e.g., 'llama-3.3-70b-versatile', 'gemini-2.5-flash').",
+    )
+    images: list[ImageInput] = Field(
+        default_factory=list,
+        max_length=3,
+        description="Up to 3 images to ask about (screenshots, diagrams, photos). Needs a Gemini API key.",
     )
     answer_style: Literal["detailed", "concise"] = Field(
         "detailed",

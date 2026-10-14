@@ -48,6 +48,7 @@ from fastapi.responses import StreamingResponse
 
 from app.schemas.query import QueryRequest, SSEThinking
 from app.services.auth import CurrentUser, get_current_user
+from app.services.vision import ImageError, QuotaError, check_vision_quota, decode_chat_image, vision_available
 from app.services.conversation_service import get_or_create_conversation, load_history
 from app.services.rag_graph import stream_rag
 from app.utils.logging import get_logger
@@ -79,6 +80,7 @@ async def _generate_sse(
     document_id: str | None = None,
     scope_kind: str = "all",
     user_id: str | None = None,
+    images: list[bytes] | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Async generator that drives the entire RAG pipeline and yields raw SSE
@@ -121,6 +123,7 @@ async def _generate_sse(
             document_id=document_id,
             scope_kind=scope_kind,
             user_id=user_id,
+            images=images,
         ):
             # Check for client disconnect on each event to stop early
             if await request.is_disconnected():
@@ -170,6 +173,22 @@ async def query_endpoint(
     request: Request,
     user: CurrentUser = Depends(get_current_user),
 ) -> StreamingResponse:
+    # Validate attachments up front so a bad image is a clear HTTP error, not a failure mid-stream
+    images: list[bytes] = []
+    if body.images:
+        if not vision_available():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Questions about images need a Gemini API key (GOOGLE_API_KEY) on the server.",
+            )
+        try:
+            images = [decode_chat_image(item.data) for item in body.images]
+            check_vision_quota(user.key)
+        except ImageError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except QuotaError as exc:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+
     logger.info(
         "POST /query | conv=%s top_k=%d style=%s project=%s doc=%s query=%r",
         body.conversation_id,
@@ -179,6 +198,8 @@ async def query_endpoint(
         body.document_id,
         body.query[:80],
     )
+    if images:
+        logger.info("POST /query | %d image(s) attached", len(images))
 
     return StreamingResponse(
         _generate_sse(
@@ -193,6 +214,7 @@ async def query_endpoint(
             document_id=str(body.document_id) if body.document_id else None,
             scope_kind=body.scope_kind,
             user_id=user.key,
+            images=images,
         ),
         media_type="text/event-stream",
         headers={
