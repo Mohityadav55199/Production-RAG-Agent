@@ -2,8 +2,9 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeftRight, Check, Copy, FileCode2, Library, Loader2, Square } from "lucide-react";
+import { ArrowLeftRight, Check, Copy, FileCode2, ImagePlus, Library, Loader2, Square } from "lucide-react";
 import { toast } from "sonner";
+import { extractCodeFromImage, imageFilesFrom } from "@/lib/api/images";
 import { parseSourceKey, streamCompare, type CompareSide } from "@/lib/api/sources";
 import type { QuerySource } from "@/lib/types";
 import { SourceSelect, useKnowledgeSources } from "@/components/chat/source-select";
@@ -287,6 +288,30 @@ interface SideEditorProps {
 }
 
 function SideEditor({ name, side, onChange, sources, disabled }: SideEditorProps) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [reading, setReading] = useState(false);
+
+  // Screenshot of code -> text in the box. The user reviews and edits it before comparing.
+  const readScreenshot = async (file: File) => {
+    setReading(true);
+    try {
+      const result = await extractCodeFromImage(file);
+      onChange({
+        ...side,
+        text: result.text,
+        // The default name ("A"/"B") counts as unnamed; a name the user typed is kept
+        label: side.label && side.label !== name ? side.label : result.language ? `${result.language} snippet` : side.label,
+      });
+      if (result.note) toast.warning(result.note, { duration: 8000 });
+      else toast.success("Code read from the screenshot. Check it, then compare.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not read the screenshot.");
+    } finally {
+      setReading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
   return (
     <div className="min-w-0 space-y-2 rounded-xl border p-3">
       <div className="flex items-center justify-between gap-2">
@@ -319,18 +344,55 @@ function SideEditor({ name, side, onChange, sources, disabled }: SideEditorProps
 
       {side.mode === "text" ? (
         <>
-          <Input
-            value={side.label}
-            onChange={(e) => onChange({ ...side, label: e.target.value })}
-            placeholder={`Name for side ${name} (e.g. solution_a.cpp)`}
-            disabled={disabled}
-            className="h-8 text-xs"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              value={side.label}
+              onChange={(e) => onChange({ ...side, label: e.target.value })}
+              placeholder={`Name for side ${name} (e.g. solution_a.cpp)`}
+              disabled={disabled}
+              className="h-8 flex-1 text-xs"
+            />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="hidden"
+              data-testid={`code-image-input-${name}`}
+              onChange={(e) => e.target.files?.[0] && void readScreenshot(e.target.files[0])}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 text-xs"
+              disabled={disabled || reading}
+              onClick={() => fileRef.current?.click()}
+              title="Read the code from a screenshot (you can also paste or drop an image into the box)"
+            >
+              {reading ? <Loader2 className="size-3.5 animate-spin" /> : <ImagePlus className="size-3.5" />}
+              {reading ? "Reading…" : "From screenshot"}
+            </Button>
+          </div>
           <Textarea
             value={side.text}
             onChange={(e) => onChange({ ...side, text: e.target.value })}
-            placeholder="Paste code or text here…"
-            disabled={disabled}
+            onPaste={(e) => {
+              const files = imageFilesFrom(e.clipboardData);
+              if (files.length > 0) {
+                e.preventDefault();
+                void readScreenshot(files[0]);
+              }
+            }}
+            onDragOver={(e) => Array.from(e.dataTransfer.types).includes("Files") && e.preventDefault()}
+            onDrop={(e) => {
+              const files = imageFilesFrom(e.dataTransfer);
+              if (files.length > 0) {
+                e.preventDefault();
+                void readScreenshot(files[0]);
+              }
+            }}
+            placeholder="Paste code or text here, or paste or drop a screenshot of code…"
+            disabled={disabled || reading}
             spellCheck={false}
             className="min-h-[220px] font-mono text-xs"
           />
