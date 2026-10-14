@@ -33,7 +33,8 @@ class PDFParser(DocumentParser):
         
         for page_index in range(total_pages):
             page: fitz.Page = doc[page_index]
-            page_text: str = page.get_text("markdown").strip()
+            # "markdown" is not a valid PyMuPDF get_text() option (AssertionError, empty message)
+            page_text: str = page.get_text("text", sort=True).strip()
             
             # If native text is too little, we attempt OCR
             if len(page_text) < self.min_chars:

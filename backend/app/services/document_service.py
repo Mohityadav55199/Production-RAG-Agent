@@ -145,7 +145,8 @@ async def _process_single_file(
         # ── 2. Mark PARSING ───────────────────────────────────────────────────
         await _update_document(doc.id, status=DocumentStatus.PARSING, current_stage="parsing")
         parser = get_parser_for_file(filename)
-        extraction = parser.parse(content, filename=filename)
+        # Parsing is CPU-bound/blocking; keep it off the event loop so health checks stay responsive
+        extraction = await asyncio.to_thread(parser.parse, content, filename=filename)
 
         # ── 3. Mark CHUNKING ──────────────────────────────────────────────────
         await _update_document(
@@ -274,20 +275,22 @@ async def _process_single_file(
 
     except Exception as exc:
         logger.exception("Failed to process '%s': %s", filename, exc)
+        # Some exceptions (bare AssertionError, MemoryError, TimeoutError) have an empty str()
+        error_text = f"{type(exc).__name__}: {exc}".rstrip(": ")
 
         if doc is not None:
             await _update_document(
                 doc.id,
                 status=DocumentStatus.FAILED,
+                error_message=error_text[:2000],
                 current_stage="failed",
-                error_message=str(exc)[:2000],
             )
             return DocumentResult(
                 document_id=doc.id,
                 filename=filename,
                 status=DocumentStatus.FAILED,
                 file_size_bytes=file_size,
-                error=str(exc),
+                error=error_text,
                 created_at=doc.created_at,
             )
 
