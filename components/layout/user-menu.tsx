@@ -49,6 +49,11 @@ export function UserMenu() {
           <div className="border-b px-4 py-3">
             <p className="text-xs text-muted-foreground">Signed in as</p>
             <p className="truncate text-sm font-medium">{user.email}</p>
+            {user.is_admin && (
+              <span className="mt-1 inline-block rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+                Administrator
+              </span>
+            )}
           </div>
           <button
             type="button"

@@ -22,6 +22,28 @@ import {
 export interface AuthUser {
   id: string;
   email: string;
+  is_admin?: boolean;
+}
+
+// A token the server issues after each successful login. Sending it back on the next login marks this
+// browser as the owner's usual device, so someone guessing the password elsewhere can never lock them out.
+const DEVICE_KEY = "rag_device";
+
+function getDevice(): string | undefined {
+  try {
+    return localStorage.getItem(DEVICE_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function setDevice(token: string | undefined) {
+  if (!token) return;
+  try {
+    localStorage.setItem(DEVICE_KEY, token);
+  } catch {
+    // storage blocked: logins still work, just without the lockout protection
+  }
 }
 
 /**
@@ -44,6 +66,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 interface AuthResponse {
   token: string;
+  device?: string;
   user: AuthUser;
 }
 
@@ -117,10 +140,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await apiFetch<AuthResponse>(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, device: getDevice() }),
       timeout: 60000, // a sleeping server can take a while to answer the first request
     });
     setToken(data.token);
+    setDevice(data.device);
     setUser(data.user);
     setStatus("authed");
   }, []);
