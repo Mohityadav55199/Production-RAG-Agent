@@ -204,11 +204,27 @@ npm run dev
    - `GROQ_API_KEY`: Your Groq key (the LLM used for chat and the resume agents)
    - `JWT_SECRET`: **Required.** A long random string that signs login tokens
      (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Without it everyone is logged out on every restart.
-   - `TRUSTED_PROXY_HOPS`: `1` (Render's load balancer). Used to find the real client address for login rate limits.
+   - `ADMIN_EMAIL` and `ADMIN_PASSWORD`: **Set both.** At startup this account is created (or its password is reset to
+     this value) and is the **only administrator**. It is also a normal user with its own documents, and it adopts any
+     data that existed before accounts were added. Registering the admin's address through the sign-up form never
+     grants admin rights (email addresses aren't verified), and an email with no password is ignored. Without these two,
+     the first account to register becomes the admin, so register yours straight away.
+   - `TRUSTED_PROXY_HOPS` (`1`) and optionally `CLIENT_IP_HEADER`: how to find the real client address behind proxies.
+     This only feeds abuse limits; password guessing is capped per account regardless. After deploying, log in as the
+     admin, open **Settings → Network check** and compare "Detected client IP" with your real public IP. If it shows a
+     proxy address, raise `TRUSTED_PROXY_HOPS` or set `CLIENT_IP_HEADER` (for example `cf-connecting-ip`) to a header your
+     proxy always overwrites.
    - Optional: `ALLOW_SIGNUP` (`false` closes registration), `GITHUB_TOKEN` (private repos), `RESUME_DAILY_LIMIT`.
 5. Click **Create Web Service**. Your backend will be live at `https://production-rag-agent.onrender.com`.
-6. **Register your own account right away.** The first account becomes the administrator and adopts any data
-   that existed before accounts were added.
+6. Log in with the admin account. Once you've signed in, you can remove `ADMIN_PASSWORD` from the environment: the
+   admin flag stays on the account (setting it again later resets the password to that value).
+
+**Login lockout:** wrong guesses against one account are capped (12 per 15 minutes). The browser you normally use is
+remembered with a signed device token, so someone guessing your password elsewhere can't lock you out of it.
+
+**Images in answers:** images in an AI answer are never fetched automatically, because a hostile document could make
+the model embed your conversation in an image address. The answer shows where the image comes from and loads it when
+you click **Load image**.
 
 > **Free-tier note:** Render's free instances sleep when idle, so the first request after a pause can take up to a
 > minute (the app shows "Waking up the server…"). Long streams (resume tailoring takes 1–3 minutes) can hit proxy

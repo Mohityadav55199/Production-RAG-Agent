@@ -45,7 +45,13 @@ services:
         generateValue: true
       - key: ALLOW_SIGNUP
         value: "true"
-      # Reverse proxies in front of the app; used to find the real client address for login rate limits
+      # The administrator account. Set BOTH: it is created (or its password reset) at startup and is the only
+      # admin. Registering this address through the sign-up form never grants admin rights.
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Reverse proxies in front of the app; used to find the real client address for abuse limits
       - key: TRUSTED_PROXY_HOPS
         value: "1"
       # Optional: lets the GitHub importer read private repos and raises GitHub's rate limit
