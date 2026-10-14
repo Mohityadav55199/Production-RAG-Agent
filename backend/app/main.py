@@ -68,6 +68,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.services.document_service import recover_stuck_documents
     await recover_stuck_documents()
 
+    # ── Startup: resume indexing interrupted by a restart ─────────────────────
+    from app.services.resume.library import recover_pending_indexing
+    try:
+        await recover_pending_indexing()
+    except Exception:
+        logger.exception("Could not recover pending resume indexing")
+
     yield
 
     # ── Shutdown ──────────────────────────────────────────────────────────────

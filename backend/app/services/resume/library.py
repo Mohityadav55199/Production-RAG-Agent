@@ -298,6 +298,23 @@ async def index_in_background(resume_id: str, profile: Profile) -> None:
         )
 
 
+async def recover_pending_indexing() -> int:
+    """At startup, resumes whose indexing was interrupted by a restart are indexed again."""
+    from sqlalchemy import select
+
+    from app.db.postgres import get_db_session
+    from app.db.resume_models import Resume
+
+    async with get_db_session() as session:
+        rows = (await session.execute(select(Resume).where(Resume.index_status == "pending"))).scalars().all()
+        pending = [(str(r.id), Profile.model_validate(r.profile)) for r in rows]
+    for resume_id, profile in pending:
+        schedule_indexing(resume_id, profile)
+    if pending:
+        logger.info("Re-indexing %d resume(s) interrupted by a restart", len(pending))
+    return len(pending)
+
+
 _background: set[asyncio.Task] = set()
 
 

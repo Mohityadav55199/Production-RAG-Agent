@@ -16,7 +16,9 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import delete, func, select
 
 from app.config import get_settings
 from app.services.auth import CurrentUser, get_current_user
@@ -234,12 +236,48 @@ class TailorRequest(BaseModel):
     resume_ids: list[uuid.UUID] | None = Field(None, description="Library resumes to use; default is all.")
 
 
+_active_runs: set[str] = set()   # users with a tailoring run in progress (one at a time each)
+
+
+async def _runs_today(user_id: str) -> int:
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    async with get_db_session() as session:
+        return await session.scalar(
+            select(func.count()).select_from(ResumeGeneration).where(
+                ResumeGeneration.user_id == user_id, ResumeGeneration.created_at >= since
+            )
+        ) or 0
+
+
 async def _tailor_stream(request: Request, body: TailorRequest, user_id: str) -> AsyncGenerator[str, None]:
     settings = get_settings()
     threshold = settings.RESUME_ATS_THRESHOLD
     output_name = _safe_name(body.output_name)
 
     yield _sse({"type": "thinking"})
+
+    # Each run makes several LLM calls on a shared quota: one at a time per user, and a daily cap
+    if user_id in _active_runs:
+        yield _sse({"type": "error", "message": "You already have a resume run in progress. Wait for it to finish."})
+        yield _sse("[DONE]")
+        return
+    if await _runs_today(user_id) >= settings.RESUME_DAILY_LIMIT:
+        yield _sse({"type": "error", "message": (
+            f"Daily limit reached ({settings.RESUME_DAILY_LIMIT} tailoring runs per 24 hours). Try again tomorrow."
+        )})
+        yield _sse("[DONE]")
+        return
+    _active_runs.add(user_id)
+    try:
+        async for chunk in _tailor_run(request, body, user_id, threshold, output_name):
+            yield chunk
+    finally:
+        _active_runs.discard(user_id)
+
+
+async def _tailor_run(
+    request: Request, body: TailorRequest, user_id: str, threshold: int, output_name: str
+) -> AsyncGenerator[str, None]:
     async with get_db_session() as session:
         query = select(Resume).where(Resume.user_id == user_id).order_by(Resume.created_at.desc())
         if body.resume_ids:
@@ -262,7 +300,8 @@ async def _tailor_stream(request: Request, body: TailorRequest, user_id: str) ->
             best = state["best"]
             jd = state["jd"]
             score = int(best["score"])
-            released = score >= threshold
+            # Released only when the score passes AND (if a compiler exists) the LaTeX really compiled
+            released = score >= threshold and not best.get("compile_failed", False)
             pdf = best["pdf"] if released else None
             tex = best["tex"] if released else None
 

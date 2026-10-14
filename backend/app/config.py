@@ -144,6 +144,7 @@ class Settings(BaseSettings):
     # further left are supplied by the client and can be forged. Raise it if logs show every user sharing one IP.
     TRUSTED_PROXY_HOPS: int = 1
     ALLOW_SIGNUP: bool = True               # set false to close registration
+    RESUME_DAILY_LIMIT: int = 20            # tailoring runs per user per 24h (protects the shared LLM quota)
 
     RESUME_ATS_THRESHOLD: int = 82          # LaTeX/PDF are released only at or above this ATS score
     GITHUB_TOKEN: str | None = None        # optional: private repos + higher GitHub rate limit

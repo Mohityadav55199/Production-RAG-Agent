@@ -190,6 +190,22 @@ def _compile_sync(tex: str) -> tuple[bytes | None, str]:
         return pdf_path.read_bytes(), ""
 
 
+_compile_slots = asyncio.Semaphore(2)   # pdflatex needs real RAM/CPU; don't let many users compile at once
+
+
 async def compile_pdf(tex: str) -> tuple[bytes | None, str]:
     """Compile LaTeX to PDF in a worker thread. Returns (pdf_bytes | None, error)."""
-    return await asyncio.to_thread(_compile_sync, tex)
+    async with _compile_slots:
+        return await asyncio.to_thread(_compile_sync, tex)
+
+
+def unsupported_characters(p: Profile) -> list[str]:
+    """Characters esc() has to drop because the template's Latin fonts cannot render them."""
+    text = " ".join([
+        p.name, p.email, p.phone, p.location, p.summary, *p.links, *p.certifications, *p.achievements,
+        *(f"{e.company} {e.title} {e.location} {e.dates} {' '.join(e.bullets)}" for e in p.experience),
+        *(f"{x.name} {x.tech} {' '.join(x.bullets)}" for x in p.projects),
+        *(f"{e.school} {e.degree} {e.location} {e.details}" for e in p.education),
+        *(f"{g} {' '.join(s)}" for g, s in p.skills.items()),
+    ])
+    return sorted({c for c in text if ord(c) >= 0x250 and c not in _CHAR_MAP and c.isalpha()})

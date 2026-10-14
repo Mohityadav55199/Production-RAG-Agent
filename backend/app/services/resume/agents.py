@@ -18,6 +18,7 @@ final score reaches the threshold.
 """
 
 import asyncio
+import difflib
 import re
 from typing import Any, AsyncGenerator, TypedDict
 
@@ -25,7 +26,13 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from app.services.resume import ats, library
-from app.services.resume.latex import compile_pdf, compiler_available, profile_plain_text, render_latex
+from app.services.resume.latex import (
+    compile_pdf,
+    compiler_available,
+    profile_plain_text,
+    render_latex,
+    unsupported_characters,
+)
 from app.services.resume.llm_utils import llm_json
 from app.services.resume.schemas import Education, Experience, JDAnalysis, Profile, Project
 from app.utils.logging import get_logger
@@ -118,6 +125,24 @@ def _numbers_grounded(text: str, corpus_numbers: set[str]) -> bool:
     return all(_num_key(n) in corpus_numbers for n in _numbers(text))
 
 
+def _fuzzy_get(items: dict, name: str):
+    """Find the library item a (possibly slightly renamed) draft item refers to."""
+    key = _norm(name)
+    if not key:
+        return None
+    if key in items:
+        return items[key]
+    for k, v in items.items():
+        if len(k) >= 4 and len(key) >= 4 and (k in key or key in k):
+            return v
+    best, best_ratio = None, 0.0
+    for k, v in items.items():
+        ratio = difflib.SequenceMatcher(None, k, key).ratio()
+        if ratio > best_ratio:
+            best, best_ratio = v, ratio
+    return best if best_ratio >= 0.82 else None
+
+
 def _closest(bullet: str, originals: list[str]) -> str | None:
     words = set(re.findall(r"[a-z0-9+#]{3,}", bullet.lower()))
     best, best_score = None, 0.0
@@ -168,7 +193,7 @@ def ground_profile(draft: Profile, merged: Profile, corpus: str) -> tuple[Profil
     # Experience: every library role is kept, in library order; text comes from the draft only if grounded
     draft_by_key = {_norm(e.company): e for e in draft.experience if e.company}
     for role in merged.experience:
-        match = draft_by_key.get(_norm(role.company))
+        match = _fuzzy_get(draft_by_key, role.company)
         originals = role.bullets
         bullets: list[str] = []
         for b in (match.bullets if match else []):
@@ -188,7 +213,7 @@ def ground_profile(draft: Profile, merged: Profile, corpus: str) -> tuple[Profil
     # Projects: only those that exist in the library
     lib_projects = {_norm(p.name): p for p in merged.projects}
     for proj in draft.projects:
-        lib = lib_projects.get(_norm(proj.name))
+        lib = _fuzzy_get(lib_projects, proj.name)
         if not lib:
             warnings.append(f"Dropped project '{proj.name}' (not in your library).")
             continue
@@ -354,10 +379,22 @@ async def node_score(state: TailorState, config: RunnableConfig) -> dict:
 
     result = report.to_dict()
     result["pdf_compiled"] = pdf is not None
+    # The compiler exists but the LaTeX failed: never hand out code that doesn't compile
+    compile_failed = compiler_available() and pdf is None
+    warnings = list(state.get("warnings", []))
+    if compile_failed:
+        first_line = next((ln for ln in compile_error.splitlines() if ln.startswith("!")), compile_error[:120])
+        warnings.append(f"The LaTeX could not be compiled, so this result is not released ({first_line.strip()}).")
+    dropped = unsupported_characters(profile)
+    if dropped:
+        warnings.append(
+            "These characters cannot be shown by the LaTeX template and were left out: " + " ".join(dropped[:12])
+        )
     best = state.get("best") or {}
     candidate = {
         "score": report.total, "draft": state["draft"], "tex": tex, "pdf": pdf, "report": result,
-        "warnings": state.get("warnings", []), "attempt": attempt, "compile_error": compile_error,
+        "warnings": warnings, "attempt": attempt, "compile_error": compile_error,
+        "compile_failed": compile_failed,
     }
     if report.total >= best.get("score", -1):
         best = candidate
