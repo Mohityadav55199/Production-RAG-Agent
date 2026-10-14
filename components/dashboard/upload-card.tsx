@@ -89,10 +89,13 @@ export function UploadCard({ disabled, onUploadComplete }: UploadCardProps) {
         } else if (alreadyExistsCount > 0) {
           toast.success(`${succeededCount} files uploaded, ${alreadyExistsCount} files Already Indexed`);
         } else {
+          const indexing = results.some((doc) => doc.status === "processing");
+          const what =
+            uploadableFiles.length === 1 ? `"${uploadableFiles[0].name}"` : `${uploadableFiles.length} files`;
           toast.success(
-            uploadableFiles.length === 1
-              ? `"${uploadableFiles[0].name}" uploaded successfully`
-              : `${uploadableFiles.length} files uploaded successfully`
+            indexing
+              ? `${what} uploaded. Indexing in the background; watch the status in Recent Documents.`
+              : `${what} uploaded successfully`
           );
         }
 

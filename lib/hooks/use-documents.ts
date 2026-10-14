@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { getDocuments } from "@/lib/api/documents";
 import { useApp } from "@/lib/context/app-context";
 import type { DashboardStats, Document } from "@/lib/types";
@@ -20,10 +21,20 @@ export function useDocuments(options?: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Processing happens in the background now, so surface failures when a document flips to "failed"
+  const previousStatus = useRef<Map<string, string>>(new Map());
+
   const refetch = useCallback(async () => {
     setError(null);
     try {
       const data = await getDocuments(activeCollectionId, options?.kind);
+      const seen = previousStatus.current;
+      for (const doc of data.documents) {
+        if (doc.status === "failed" && seen.get(doc.id) === "processing") {
+          toast.error(`${doc.name}: ${doc.error || "Processing failed"}`, { duration: 10000 });
+        }
+        seen.set(doc.id, doc.status);
+      }
       setDocuments(data.documents);
       setStats(data.stats);
     } catch (err) {
