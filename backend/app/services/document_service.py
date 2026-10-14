@@ -98,14 +98,16 @@ async def _update_document(
         )
 
 
-async def _process_single_file(
+async def _prepare_file(
     filename: str,
     content: bytes,
-    settings,
-    user_id: str | None = None,
-) -> DocumentResult:
+    user_id: str | None,
+) -> tuple[Document | None, DocumentResult | None]:
     """
-    Run the full ingestion pipeline for one file with state checkpoints and resume.
+    Fast, synchronous part of an upload: duplicate detection and record creation.
+
+    Returns ``(doc, None)`` when the file needs processing (new, or resuming a partial
+    upload), or ``(None, result)`` when there is nothing left to do (duplicate or error).
     """
     file_size = len(content)
     file_hash = hashlib.sha256(content).hexdigest()
@@ -118,11 +120,11 @@ async def _process_single_file(
             existing_doc = await session.scalar(
                 select(Document).where(Document.file_hash == file_hash, Document.user_id == user_id).limit(1)
             )
-            
+
             if existing_doc is not None:
                 if existing_doc.status == DocumentStatus.COMPLETED:
                     logger.info("Duplicate document detected: filename='%s'", filename)
-                    return DocumentResult(
+                    return None, DocumentResult(
                         document_id=existing_doc.id,
                         filename=filename,
                         status=DocumentStatus.ALREADY_EXISTS,
@@ -134,15 +136,38 @@ async def _process_single_file(
                         file_size_bytes=existing_doc.file_size,
                         created_at=existing_doc.created_at,
                     )
-                else:
-                    logger.info("Resuming partial document id=%s from state %s", existing_doc.id, existing_doc.status.value)
-                    doc = existing_doc
-                    is_resume = True
+                logger.info("Resuming partial document id=%s from state %s", existing_doc.id, existing_doc.status.value)
+                doc = existing_doc
+                is_resume = True
 
         # ── 1. Persist metadata record (if not resuming) ──────────────────────
         if not is_resume:
             doc = await _create_document_record(filename, file_size, file_hash, user_id)
-        
+        return doc, None
+
+    except Exception as exc:
+        logger.exception("Could not register upload '%s': %s", filename, exc)
+        return None, DocumentResult(
+            document_id=uuid.uuid4(),
+            filename=filename,
+            status=DocumentStatus.FAILED,
+            file_size_bytes=file_size,
+            error=f"Database error during record creation: {type(exc).__name__}: {exc}",
+        )
+
+
+async def _run_pipeline(
+    doc: Document,
+    filename: str,
+    content: bytes,
+    settings,
+) -> DocumentResult:
+    """
+    The slow part of an upload: parse, chunk, embed and index, with state checkpoints.
+    """
+    file_size = len(content)
+
+    try:
         doc_id_str = str(doc.id)
 
         # ── 2. Mark PARSING ───────────────────────────────────────────────────
@@ -304,6 +329,71 @@ async def _process_single_file(
             file_size_bytes=file_size,
             error=f"Database error during record creation: {exc}",
         )
+
+
+async def _process_single_file(
+    filename: str,
+    content: bytes,
+    settings,
+    user_id: str | None = None,
+) -> DocumentResult:
+    """Prepare and run one file to completion (used by project imports and tests)."""
+    doc, early = await _prepare_file(filename, content, user_id)
+    if early is not None:
+        return early
+    return await _run_pipeline(doc, filename, content, settings)
+
+
+_upload_tasks: set[asyncio.Task] = set()
+
+
+async def _run_queued(queued: list[tuple[Document, str, bytes]], settings) -> None:
+    for doc, filename, content in queued:
+        try:
+            await _run_pipeline(doc, filename, content, settings)
+        except Exception:  # _run_pipeline records failures itself; this only guards the loop
+            logger.exception("Background processing crashed for '%s'", filename)
+
+
+async def queue_uploads(
+    files: list[tuple[str, bytes]],
+    user_id: str | None = None,
+) -> UploadResponse:
+    """
+    Register every file immediately (duplicates are reported at once) and process the rest in the
+    background, so the upload request returns in moments instead of holding a connection open
+    for the whole embedding run. Progress shows up in the documents list.
+    """
+    settings = get_settings()
+    results: list[DocumentResult] = []
+    queued: list[tuple[Document, str, bytes]] = []
+
+    for filename, content in files:
+        doc, early = await _prepare_file(filename, content, user_id)
+        if early is not None:
+            results.append(early)
+            continue
+        queued.append((doc, filename, content))
+        results.append(DocumentResult(
+            document_id=doc.id,
+            filename=filename,
+            status=DocumentStatus.PENDING,
+            file_size_bytes=len(content),
+            created_at=doc.created_at,
+            message="Processing in the background.",
+        ))
+
+    if queued:
+        task = asyncio.create_task(_run_queued(queued, settings))
+        _upload_tasks.add(task)
+        task.add_done_callback(_upload_tasks.discard)
+
+    return UploadResponse(
+        total=len(results),
+        succeeded=0,
+        failed=sum(1 for r in results if r.status == DocumentStatus.FAILED),
+        documents=results,
+    )
 
 
 async def process_uploads(

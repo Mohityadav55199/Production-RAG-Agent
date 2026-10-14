@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from app.config import get_settings
 from app.schemas.document import UploadResponse
 from app.services.auth import CurrentUser, get_current_user
-from app.services.document_service import process_uploads
+from app.services.document_service import queue_uploads
 from app.utils.file_utils import validate_document_upload
 from app.utils.logging import get_logger
 
@@ -83,12 +83,11 @@ async def upload_documents(
 
     # ── Run the ingestion pipeline ─────────────────────────────────────────────
     logger.info("Starting ingestion pipeline for %d file(s)", len(file_payloads))
-    response = await process_uploads(file_payloads, user.key)
+    response = await queue_uploads(file_payloads, user.key)
 
     logger.info(
-        "Upload complete — total=%d succeeded=%d failed=%d",
+        "Upload registered — total=%d failed_to_register=%d (processing continues in the background)",
         response.total,
-        response.succeeded,
         response.failed,
     )
     return response
