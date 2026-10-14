@@ -39,9 +39,16 @@ def _helper_routes(client):
     async def recover():
         return {"recovered": await recover_pending_indexing()}
 
+    async def run_ensure_admin():
+        from app.services.accounts import ensure_admin
+
+        await ensure_admin()
+        return {"ok": True}
+
     app.add_api_route("/_scope", scope, methods=["GET"])
     app.add_api_route("/_conv/{conversation_id}", conv, methods=["GET"])
     app.add_api_route("/_recover", recover, methods=["POST"])
+    app.add_api_route("/_ensure_admin", run_ensure_admin, methods=["POST"])
 
 
 @pytest.fixture(autouse=True)
@@ -147,18 +154,42 @@ class TestRateLimits:
         ]
         assert codes.count(401) == 12 and codes.count(429) == 4, codes
 
-    def test_client_address_comes_from_the_trusted_end_of_the_header(self):
+    @staticmethod
+    def _req(headers=None, host="172.18.0.2"):
         from types import SimpleNamespace
 
-        from app.api.auth import _client_ip
+        return SimpleNamespace(headers={k.lower(): v for k, v in (headers or {}).items()},
+                               client=SimpleNamespace(host=host))
 
-        def req(xff=None, host="172.18.0.2"):
-            headers = {"x-forwarded-for": xff} if xff else {}
-            return SimpleNamespace(headers=headers, client=SimpleNamespace(host=host))
+    def test_client_address_comes_from_the_trusted_end_of_the_header(self):
+        from app.utils.client_ip import client_ip
 
-        assert _client_ip(req("1.1.1.1, 9.9.9.9")) == "9.9.9.9"          # leftmost (forgeable) is ignored
-        assert _client_ip(req("9.9.9.9")) == "9.9.9.9"
-        assert _client_ip(req(None)) == "172.18.0.2"                       # no proxy header: socket address
+        assert client_ip(self._req({"X-Forwarded-For": "1.1.1.1, 9.9.9.9"})) == "9.9.9.9"   # leftmost is forgeable
+        assert client_ip(self._req({"X-Forwarded-For": "9.9.9.9"})) == "9.9.9.9"
+        assert client_ip(self._req()) == "172.18.0.2"                                        # no header: socket address
+
+    def test_number_of_trusted_proxy_hops_is_configurable(self, monkeypatch):
+        from app.config import get_settings
+        from app.utils.client_ip import client_ip
+
+        monkeypatch.setattr(get_settings(), "TRUSTED_PROXY_HOPS", 2)
+        header = {"X-Forwarded-For": "6.6.6.6, 1.2.3.4, 10.0.0.1"}     # forged, real client, first proxy
+        assert client_ip(self._req(header)) == "1.2.3.4"
+
+    def test_a_configured_client_ip_header_wins_when_present(self, monkeypatch):
+        from app.config import get_settings
+        from app.utils.client_ip import client_ip
+
+        monkeypatch.setattr(get_settings(), "CLIENT_IP_HEADER", "CF-Connecting-IP")
+        assert client_ip(self._req({"CF-Connecting-IP": "8.8.4.4", "X-Forwarded-For": "1.1.1.1, 9.9.9.9"})) == "8.8.4.4"
+        assert client_ip(self._req({"X-Forwarded-For": "1.1.1.1, 9.9.9.9"})) == "9.9.9.9"   # header absent: falls back
+
+    def test_admin_network_check_reports_what_the_server_sees(self, client, users):
+        r = client.get("/admin/network", headers={**users["alice"], "X-Forwarded-For": "1.1.1.1, 9.9.9.9"})
+        body = r.json()
+        assert r.status_code == 200
+        assert body["detected_client_ip"] == "9.9.9.9" and body["x_forwarded_for_entries"] == ["1.1.1.1", "9.9.9.9"]
+        assert client.get("/admin/network", headers=users["bob"]).status_code == 403
 
     def test_a_correct_login_resets_the_account_counter(self, client, users):
         for i in range(3):
@@ -166,6 +197,51 @@ class TestRateLimits:
         assert client.post("/auth/login", json={"email": "bob@example.com", "password": "bobs password 3"}).status_code == 200
         for i in range(5):   # would exceed the limit if the earlier failures still counted
             assert client.post("/auth/login", json={"email": "bob@example.com", "password": f"bad bad {i}"}).status_code == 401
+
+    def test_the_owner_on_a_trusted_device_cannot_be_locked_out(self, client):
+        """An attacker can exhaust the per-account cap, but never holds the owner's device token."""
+        email, password = "dana@example.com", "dana password 1"
+        signup = client.post("/auth/signup", json={"email": email, "password": password}).json()
+        device = signup["device"]
+        for i in range(12):                                         # attacker rotating addresses
+            client.post("/auth/login", headers={"X-Forwarded-For": f"10.2.0.{i}"},
+                        json={"email": email, "password": f"attacker guess {i}"})
+        locked = client.post("/auth/login", headers={"X-Forwarded-For": "10.2.1.1"},
+                             json={"email": email, "password": password})
+        assert locked.status_code == 429                            # a stranger is locked out, even with the right password
+        owner = client.post("/auth/login", headers={"X-Forwarded-For": "10.2.1.2"},
+                            json={"email": email, "password": password, "device": device})
+        assert owner.status_code == 200                             # the owner's usual device still works
+        run_sql("DELETE FROM users WHERE email = $1", email)
+
+    def test_a_device_token_only_helps_its_own_account(self, client, users):
+        other = client.post("/auth/signup", json={"email": "erin@example.com", "password": "erin password 1"}).json()
+        email = "frank@example.com"
+        client.post("/auth/signup", json={"email": email, "password": "frank password 1"})
+        for i in range(12):
+            client.post("/auth/login", headers={"X-Forwarded-For": f"10.3.0.{i}"},
+                        json={"email": email, "password": f"guess {i}"})
+        r = client.post("/auth/login", headers={"X-Forwarded-For": "10.3.1.1"},
+                        json={"email": email, "password": "frank password 1", "device": other["device"]})
+        assert r.status_code == 429
+        run_sql("DELETE FROM users WHERE email IN ('erin@example.com', $1)", email)
+
+    def test_trusted_devices_are_still_limited_per_address(self, client):
+        email = "gina@example.com"
+        device = client.post("/auth/signup", json={"email": email, "password": "gina password 1"}).json()["device"]
+        codes = [client.post("/auth/login", headers={"X-Forwarded-For": "10.4.0.1"},
+                             json={"email": email, "password": f"bad {i}", "device": device}).status_code
+                 for i in range(8)]
+        assert codes.count(401) == 6 and 429 in codes                # a stolen device token is not a free pass
+        run_sql("DELETE FROM users WHERE email = $1", email)
+
+    def test_device_and_session_tokens_are_not_interchangeable(self, client, users):
+        device = client.post("/auth/login", json={"email": "alice@example.com", "password": "correct horse 1"}).json()["device"]
+        assert client.get("/documents", headers=auth_header(device)).status_code == 401
+        session = users["alice"]["Authorization"].split(" ", 1)[1]
+        r = client.post("/auth/login", headers={"X-Forwarded-For": "10.5.0.1"},
+                        json={"email": "alice@example.com", "password": "wrong password 1", "device": session})
+        assert r.status_code == 401                                  # a session token is not a device token
 
     def test_signup_attempts_per_address_are_limited(self, client):
         codes = [client.post("/auth/signup", json={"email": f"spam{i}@example.com", "password": "spam password 1"}).status_code
@@ -309,10 +385,12 @@ class TestResumeIsolationAndGate:
 # ── Admin ────────────────────────────────────────────────────────────────────────────────────────
 
 class TestAdmin:
-    def test_only_the_first_account_is_admin(self, client, users):
+    def test_without_configuration_only_the_first_account_is_admin(self, client, users):
         assert client.get("/collections", headers=users["alice"]).status_code == 200
         assert client.get("/collections", headers=users["bob"]).status_code == 403
         assert client.get("/collections").status_code in (401, 403)
+        assert client.get("/auth/me", headers=users["alice"]).json()["is_admin"] is True
+        assert client.get("/auth/me", headers=users["bob"]).json()["is_admin"] is False
 
     def test_registering_an_admins_email_does_not_confer_admin_rights(self, client, users):
         """Admin used to be decided by email address, which anyone could register first."""
@@ -320,6 +398,84 @@ class TestAdmin:
         assert r.status_code == 201
         token = auth_header(r.json()["token"])
         assert client.get("/collections", headers=token).status_code == 403
+
+
+class TestConfiguredAdmin:
+    """ADMIN_EMAIL + ADMIN_PASSWORD make that account the one and only administrator."""
+
+    @pytest.fixture(autouse=True)
+    def _restore(self, client, users):
+        from app.config import get_settings
+
+        settings = get_settings()
+        before = (settings.ADMIN_EMAIL, settings.ADMIN_PASSWORD)
+        yield settings
+        settings.ADMIN_EMAIL, settings.ADMIN_PASSWORD = before
+        run_sql("DELETE FROM users WHERE email IN ('boss@example.com', 'owner@example.com')")
+        run_sql("UPDATE users SET is_admin = (email = 'alice@example.com')")   # back to the baseline
+
+    @staticmethod
+    def _configure(settings, email, password, client):
+        settings.ADMIN_EMAIL, settings.ADMIN_PASSWORD = email, password
+        assert client.post("/_ensure_admin").status_code == 200
+
+    @staticmethod
+    def _login(client, email, password):
+        return client.post("/auth/login", headers={"X-Forwarded-For": "10.9.0.1"},
+                           json={"email": email, "password": password})
+
+    def test_creates_the_account_and_makes_it_the_only_admin(self, client, users, _restore):
+        self._configure(_restore, "Boss@Example.com", "boss password 1", client)
+        r = self._login(client, "boss@example.com", "boss password 1")
+        assert r.status_code == 200 and r.json()["user"]["is_admin"] is True
+        boss = auth_header(r.json()["token"])
+        assert client.get("/auth/me", headers=boss).json()["is_admin"] is True
+        assert client.get("/collections", headers=boss).status_code == 200
+        assert client.get("/admin/network", headers=boss).status_code == 200
+        assert client.get("/collections", headers=users["alice"]).status_code == 403     # previous admin demoted
+        assert client.get("/auth/me", headers=users["alice"]).json()["is_admin"] is False
+
+    def test_the_admin_is_also_a_normal_user_with_private_data(self, client, users, _restore):
+        self._configure(_restore, "boss@example.com", "boss password 1", client)
+        boss = auth_header(self._login(client, "boss@example.com", "boss password 1").json()["token"])
+        assert client.get("/documents", headers=boss).json()["total"] == 0
+        assert client.get("/resume/library", headers=boss).json()["resumes"] == []
+
+    def test_the_address_cannot_be_registered_through_the_form_afterwards(self, client, users, _restore):
+        self._configure(_restore, "boss@example.com", "boss password 1", client)
+        r = client.post("/auth/signup", json={"email": "boss@example.com", "password": "attacker pass 9"})
+        assert r.status_code == 409
+
+    def test_rerunning_is_harmless_and_a_new_password_replaces_the_old_one(self, client, users, _restore):
+        self._configure(_restore, "boss@example.com", "boss password 1", client)
+        self._configure(_restore, "boss@example.com", "boss password 1", client)
+        assert self._login(client, "boss@example.com", "boss password 1").status_code == 200
+        self._configure(_restore, "boss@example.com", "new boss password 2", client)
+        assert self._login(client, "boss@example.com", "boss password 1").status_code == 401
+        assert self._login(client, "boss@example.com", "new boss password 2").status_code == 200
+        assert run_sql("SELECT count(*) AS n FROM users WHERE is_admin")[0]["n"] == 1
+
+    def test_an_account_registered_by_someone_else_is_taken_over_not_trusted(self, client, users, _restore):
+        """If an attacker registered the admin's address first, the configured password takes the account back."""
+        squatter = client.post("/auth/signup", json={"email": "owner@example.com", "password": "squatter pass 1"})
+        assert squatter.status_code == 201 and squatter.json()["user"]["is_admin"] is False
+        self._configure(_restore, "owner@example.com", "real owner pass 1", client)
+        assert self._login(client, "owner@example.com", "squatter pass 1").status_code == 401
+        assert self._login(client, "owner@example.com", "real owner pass 1").json()["user"]["is_admin"] is True
+
+    def test_an_email_without_a_password_changes_nothing(self, client, users, _restore):
+        """Promoting an account that anyone could have registered is exactly the hijack to avoid."""
+        client.post("/auth/signup", json={"email": "owner@example.com", "password": "squatter pass 1"})
+        self._configure(_restore, "owner@example.com", "", client)
+        me = client.post("/auth/login", headers={"X-Forwarded-For": "10.9.0.2"},
+                         json={"email": "owner@example.com", "password": "squatter pass 1"}).json()
+        assert me["user"]["is_admin"] is False
+        assert client.get("/auth/me", headers=users["alice"]).json()["is_admin"] is True
+
+    def test_a_weak_admin_password_is_rejected_and_ignored(self, client, users, _restore):
+        self._configure(_restore, "boss@example.com", "short", client)
+        assert run_sql("SELECT count(*) AS n FROM users WHERE email = 'boss@example.com'")[0]["n"] == 0
+        assert client.get("/auth/me", headers=users["alice"]).json()["is_admin"] is True
 
 
 # ── Projects ─────────────────────────────────────────────────────────────────────────────────────
