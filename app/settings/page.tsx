@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/layout/app-shell";
+import { NetworkCheck } from "@/components/settings/network-check";
 import { SettingsPanel } from "@/components/settings/settings-panel";
 
 export default function SettingsPage() {
@@ -14,6 +15,7 @@ export default function SettingsPage() {
       </div>
 
       <SettingsPanel />
+      <NetworkCheck />
     </AppShell>
   );
 }
