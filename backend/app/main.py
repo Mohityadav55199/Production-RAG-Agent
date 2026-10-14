@@ -13,9 +13,10 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.auth import router as auth_router
 from app.api.collections import router as collections_router
 from app.api.compare import router as compare_router
 from app.api.document_management import router as document_management_router
@@ -23,9 +24,13 @@ from app.api.documents import router as documents_router
 from app.api.health import router as health_router
 from app.api.projects import router as projects_router
 from app.api.query import router as query_router
+from app.api.resume import router as resume_router
 from app.config import get_settings
+from app.services.auth import get_current_user, require_admin
 from app.db import models  # noqa: F401 — registers Phase 2 tables with Base.metadata
 from app.db import conversation_models  # noqa: F401 — registers Phase 4 tables
+from app.db import resume_models  # noqa: F401 — registers resume tables
+from app.db import auth_models  # noqa: F401 — registers the users table
 from app.db.postgres import dispose_engine, get_engine
 from app.db.postgres import Base
 from app.db.qdrant import close_qdrant_client
@@ -53,6 +58,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("PostgreSQL tables verified / created")
+    from app.db.migrations import run_migrations
+    await run_migrations(engine)
 
     # ── Startup: ensure Qdrant collection exists ──────────────────────────────
     await ensure_collection()
@@ -115,13 +122,20 @@ def create_app() -> FastAPI:
         return response
 
     # ── Routers ───────────────────────────────────────────────────────────────
-    app.include_router(health_router)            # Phase 1
-    app.include_router(documents_router)         # Phase 2 — POST /upload
-    app.include_router(document_management_router)  # Phase 3 — GET/DELETE /documents
-    app.include_router(collections_router)       # Phase 3 — /collections CRUD
-    app.include_router(projects_router)          # POST /projects/github, /projects/zip
-    app.include_router(compare_router)           # POST /compare SSE
-    app.include_router(query_router)             # Phase 4 — POST /query SSE
+    # Public: health checks and the auth endpoints themselves
+    app.include_router(health_router)
+    app.include_router(auth_router)
+
+    # Everything else requires a logged-in user; handlers scope data to that user
+    protected = [Depends(get_current_user)]
+    app.include_router(documents_router, dependencies=protected)             # POST /upload
+    app.include_router(document_management_router, dependencies=protected)   # GET/DELETE /documents
+    app.include_router(projects_router, dependencies=protected)              # /projects/*
+    app.include_router(resume_router, dependencies=protected)                # /resume/*
+    app.include_router(compare_router, dependencies=protected)               # POST /compare (SSE)
+    app.include_router(query_router, dependencies=protected)                 # POST /query (SSE)
+    # The Qdrant collection admin API acts on the shared index, so it is admin-only
+    app.include_router(collections_router, dependencies=[Depends(require_admin)])
 
     return app
 

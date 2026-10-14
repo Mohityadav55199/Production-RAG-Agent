@@ -9,13 +9,14 @@ New endpoints added without touching Phase 2 code:
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from app.db.models import DocumentStatus
 from app.schemas.document_management import (
     DocumentDeleteResponse,
     DocumentListResponse,
 )
+from app.services.auth import CurrentUser, get_current_user
 from app.services.document_query_service import delete_document, list_documents
 from app.utils.logging import get_logger
 
@@ -52,8 +53,9 @@ async def list_documents_endpoint(
         Literal["documents", "projects"] | None,
         Query(description="'documents' = standalone uploads, 'projects' = imported code files."),
     ] = None,
+    user: CurrentUser = Depends(get_current_user),
 ) -> DocumentListResponse:
-    return await list_documents(page=page, limit=limit, status=status, kind=kind)
+    return await list_documents(user.key, page=page, limit=limit, status=status, kind=kind)
 
 
 # ── DELETE /documents/{id} ────────────────────────────────────────────────────
@@ -75,9 +77,10 @@ async def delete_document_endpoint(
         uuid.UUID,
         Path(description="UUID of the document to delete."),
     ],
+    user: CurrentUser = Depends(get_current_user),
 ) -> DocumentDeleteResponse:
     try:
-        return await delete_document(document_id)
+        return await delete_document(document_id, user.key)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

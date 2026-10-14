@@ -29,6 +29,7 @@ logger = get_logger(__name__)
 
 
 async def list_documents(
+    user_id: str | None,
     page: int = 1,
     limit: int = 20,
     status: DocumentStatus | None = None,
@@ -51,8 +52,8 @@ async def list_documents(
 
     async with get_db_session() as session:
         # ── Base query ────────────────────────────────────────────────────────
-        base_q = select(Document)
-        count_q = select(func.count()).select_from(Document)
+        base_q = select(Document).where(Document.user_id == user_id)
+        count_q = select(func.count()).select_from(Document).where(Document.user_id == user_id)
 
         if status is not None:
             base_q = base_q.where(Document.status == status)
@@ -107,7 +108,7 @@ async def list_documents(
     )
 
 
-async def delete_document(document_id: uuid.UUID) -> DocumentDeleteResponse:
+async def delete_document(document_id: uuid.UUID, user_id: str | None) -> DocumentDeleteResponse:
     """
     Hard-delete a document: remove its Qdrant vectors first, then the PG row.
 
@@ -130,7 +131,7 @@ async def delete_document(document_id: uuid.UUID) -> DocumentDeleteResponse:
         )
         doc: Document | None = result.scalar_one_or_none()
 
-    if doc is None:
+    if doc is None or doc.user_id != user_id:
         raise KeyError(f"Document '{document_id}' not found.")
 
     filename = doc.filename

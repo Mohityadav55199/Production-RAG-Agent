@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppProvider } from "@/lib/context/app-context";
+import { AuthProvider } from "@/lib/context/auth-context";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider, themeInitScript } from "@/components/layout/theme-provider";
 import "./globals.css";
@@ -17,7 +18,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "RAG Agent",
-  description: "Manage documents and knowledge base",
+  description: "Chat with your documents and code, compare code, and tailor your resume to any job with an ATS score.",
 };
 
 export default function RootLayout({
@@ -34,10 +35,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
         <ThemeProvider>
-          <AppProvider>
-            {children}
-            <Toaster richColors closeButton />
-          </AppProvider>
+          <AuthProvider>
+            <AppProvider>
+              {children}
+              <Toaster richColors closeButton />
+            </AppProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -30,6 +30,7 @@ _DEFAULT_HISTORY_PAIRS = 3
 
 async def get_or_create_conversation(
     conversation_id: uuid.UUID | None,
+    user_id: str | None = None,
 ) -> uuid.UUID:
     """
     Return the UUID of the requested conversation, or create a new one.
@@ -46,7 +47,8 @@ async def get_or_create_conversation(
                 select(Conversation).where(Conversation.id == conversation_id)
             )
             existing = result.scalar_one_or_none()
-            if existing is not None:
+            # A conversation id that belongs to someone else is treated as unknown
+            if existing is not None and existing.user_id == user_id:
                 logger.debug("Resuming conversation id=%s", conversation_id)
                 return existing.id
 
@@ -55,7 +57,7 @@ async def get_or_create_conversation(
                 conversation_id,
             )
 
-        new_conv = Conversation(id=uuid.uuid4())
+        new_conv = Conversation(id=uuid.uuid4(), user_id=user_id)
         session.add(new_conv)
         await session.flush()
         conv_id = new_conv.id

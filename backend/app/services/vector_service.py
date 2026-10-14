@@ -21,10 +21,16 @@ logger = get_logger(__name__)
 NAMESPACE_RAG = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 
 def generate_point_id(
-    filename: str, page_number: int, section: str | None, heading: str | None, chunk_index: int, text: str
+    filename: str, page_number: int, section: str | None, heading: str | None, chunk_index: int, text: str,
+    scope: str = "",
 ) -> str:
-    """Generate a deterministic UUID for a chunk based on its content and metadata."""
+    """Generate a deterministic UUID for a chunk based on its content and metadata.
+
+    ``scope`` (the owning document id) keeps two users' copies of the same file apart;
+    an empty scope reproduces the legacy ids."""
     stable_name = f"{filename}::{page_number}::{section}::{heading}::{chunk_index}::{text}"
+    if scope:
+        stable_name = f"{scope}::{stable_name}"
     return str(uuid.uuid5(NAMESPACE_RAG, stable_name))
 
 
@@ -108,7 +114,7 @@ async def upsert_vectors(points: list[VectorPoint]) -> int:
 
     for p in points:
         deterministic_id = generate_point_id(
-            p.filename, p.page_number, p.section, p.heading, p.chunk_index, p.text
+            p.filename, p.page_number, p.section, p.heading, p.chunk_index, p.text, scope=p.document_id
         )
 
         qdrant_points.append(

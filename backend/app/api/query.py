@@ -43,10 +43,11 @@ import json
 import uuid
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.schemas.query import QueryRequest, SSEThinking
+from app.services.auth import CurrentUser, get_current_user
 from app.services.conversation_service import get_or_create_conversation, load_history
 from app.services.rag_graph import stream_rag
 from app.utils.logging import get_logger
@@ -77,6 +78,7 @@ async def _generate_sse(
     project: str | None = None,
     document_id: str | None = None,
     scope_kind: str = "all",
+    user_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Async generator that drives the entire RAG pipeline and yields raw SSE
@@ -94,7 +96,7 @@ async def _generate_sse(
     """
     # ── 1+2. Conversation setup ───────────────────────────────────────────────
     try:
-        conv_id = await get_or_create_conversation(conversation_id)
+        conv_id = await get_or_create_conversation(conversation_id, user_id)
         history = await load_history(conv_id)
     except Exception as exc:
         logger.exception("Conversation setup failed: %s", exc)
@@ -118,6 +120,7 @@ async def _generate_sse(
             project=project,
             document_id=document_id,
             scope_kind=scope_kind,
+            user_id=user_id,
         ):
             # Check for client disconnect on each event to stop early
             if await request.is_disconnected():
@@ -165,6 +168,7 @@ async def _generate_sse(
 async def query_endpoint(
     body: QueryRequest,
     request: Request,
+    user: CurrentUser = Depends(get_current_user),
 ) -> StreamingResponse:
     logger.info(
         "POST /query | conv=%s top_k=%d style=%s project=%s doc=%s query=%r",
@@ -188,6 +192,7 @@ async def query_endpoint(
             project=body.project,
             document_id=str(body.document_id) if body.document_id else None,
             scope_kind=body.scope_kind,
+            user_id=user.key,
         ),
         media_type="text/event-stream",
         headers={

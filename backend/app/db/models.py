@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from enum import Enum as PyEnum
 
-from sqlalchemy import BigInteger, DateTime, Enum, Integer, String, Text, Boolean
+from sqlalchemy import BigInteger, DateTime, Enum, Index, Integer, String, Text, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -38,6 +38,7 @@ class Document(Base):
     """
 
     __tablename__ = "documents"
+    __table_args__ = (Index("uq_documents_user_hash", "user_id", "file_hash", unique=True),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -46,7 +47,10 @@ class Document(Base):
     )
     filename: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    file_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    # Owner. NULL only for rows created before accounts existed (claimed by the first user).
+    user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Unique per user (see uq_documents_user_hash), not globally
+    file_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     status: Mapped[DocumentStatus] = mapped_column(
         Enum(DocumentStatus, name="documentstatus", create_type=True),
         default=DocumentStatus.PENDING,

@@ -1,4 +1,4 @@
-import { getApiBase, ApiError } from "@/lib/api/client";
+import { getApiBase, ApiError, authedFetch } from "@/lib/api/client";
 import { normalizeSources } from "@/lib/api/normalize";
 import type { QuerySource } from "@/lib/types";
 
@@ -87,7 +87,7 @@ export async function streamSse(
   signal?: AbortSignal
 ): Promise<void> {
   const apiBase = getApiBase();
-  const res = await fetch(`${apiBase}${path}`, {
+  const res = await authedFetch(`${apiBase}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -10,10 +10,11 @@ normal document pipeline, so progress shows up in GET /documents.
 
 import asyncio
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.services.auth import CurrentUser, get_current_user
 from app.services.document_service import process_uploads
 from app.services.project_import import (
     MAX_ARCHIVE_BYTES,
@@ -44,9 +45,9 @@ class ProjectImportResponse(BaseModel):
     message: str
 
 
-async def _ingest_in_background(project: ProjectFiles) -> None:
+async def _ingest_in_background(project: ProjectFiles, user_id: str) -> None:
     try:
-        result = await process_uploads(project.files)
+        result = await process_uploads(project.files, user_id)
         logger.info(
             "Project '%s' ingested — succeeded=%d failed=%d",
             project.project_name, result.succeeded, result.failed,
@@ -55,8 +56,8 @@ async def _ingest_in_background(project: ProjectFiles) -> None:
         logger.exception("Background ingestion of project '%s' crashed", project.project_name)
 
 
-def _queue(project: ProjectFiles) -> ProjectImportResponse:
-    task = asyncio.create_task(_ingest_in_background(project))
+def _queue(project: ProjectFiles, user_id: str) -> ProjectImportResponse:
+    task = asyncio.create_task(_ingest_in_background(project, user_id))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
@@ -74,13 +75,15 @@ def _queue(project: ProjectFiles) -> ProjectImportResponse:
 
 
 @router.get("/sources", summary="List imported projects and standalone documents")
-async def get_sources() -> dict:
+async def get_sources(user: CurrentUser = Depends(get_current_user)) -> dict:
     """Used by the Chat scope picker and the Compare view."""
-    return await list_sources()
+    return await list_sources(user.key)
 
 
 @router.post("/github", response_model=ProjectImportResponse, summary="Import a GitHub repository")
-async def import_github(body: GithubImportRequest) -> ProjectImportResponse:
+async def import_github(
+    body: GithubImportRequest, user: CurrentUser = Depends(get_current_user)
+) -> ProjectImportResponse:
     try:
         project = await fetch_github_project(body.url, token=get_settings().GITHUB_TOKEN)
     except ValueError as exc:
@@ -91,11 +94,14 @@ async def import_github(body: GithubImportRequest) -> ProjectImportResponse:
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Could not download repository: {type(exc).__name__}: {exc}",
         ) from exc
-    return _queue(project)
+    return _queue(project, user.key)
 
 
 @router.post("/zip", response_model=ProjectImportResponse, summary="Import a project .zip archive")
-async def import_zip(file: UploadFile = File(..., description="Project folder compressed as .zip")) -> ProjectImportResponse:
+async def import_zip(
+    file: UploadFile = File(..., description="Project folder compressed as .zip"),
+    user: CurrentUser = Depends(get_current_user),
+) -> ProjectImportResponse:
     filename = (file.filename or "project.zip").replace("\\", "/").rsplit("/", 1)[-1]
     if not filename.lower().endswith(".zip"):
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Please upload a .zip file.")
@@ -106,4 +112,4 @@ async def import_zip(file: UploadFile = File(..., description="Project folder co
         project = await asyncio.to_thread(extract_project_from_zip, content, project_name)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return _queue(project)
+    return _queue(project, user.key)

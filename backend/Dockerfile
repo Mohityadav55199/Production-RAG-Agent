@@ -30,11 +30,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
 
-# Install system dependencies for OCR and healthchecks
+# Install system dependencies for OCR, healthchecks and LaTeX (resume PDF generation;
+# a minimal TeX Live set - the resume template only uses base/recommended packages)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     libgl1 \
     curl \
+    texlive-latex-base \
+    texlive-latex-recommended \
+    texlive-fonts-recommended \
+    lmodern \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -123,6 +123,7 @@ class RAGState(TypedDict):
     project: str | None            # restrict to one imported code project
     document_id: str | None        # or to a single document
     scope_kind: str                # "all" | "documents" | "projects"
+    user_id: str | None            # owner: retrieval only ever sees this user's documents
     scope_label: str
 
 
@@ -179,6 +180,7 @@ async def _retrieve_node(state: RAGState) -> dict:
         sources — serialisable list[dict] emitted in the SSE sources event
     """
     scope = await resolve_scope(
+        state.get("user_id"),
         project=state.get("project"),
         document_id=state.get("document_id"),
         kind=state.get("scope_kind") or "all",
@@ -334,6 +336,7 @@ async def stream_rag(
     project: str | None = None,
     document_id: str | None = None,
     scope_kind: str = "all",
+    user_id: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """
     Execute the RAG graph and yield typed event dicts for the SSE layer.
@@ -374,6 +377,7 @@ async def stream_rag(
         "project": project,
         "document_id": document_id,
         "scope_kind": scope_kind,
+        "user_id": user_id,
         "scope_label": "",
     }
 

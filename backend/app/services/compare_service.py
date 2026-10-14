@@ -83,7 +83,9 @@ given, prioritise it.
 """
 
 
-async def _side_material(side: CompareSide, name: str, focus: str) -> tuple[str, str, list[RetrievedChunk]]:
+async def _side_material(
+    side: CompareSide, name: str, focus: str, user_id: str | None
+) -> tuple[str, str, list[RetrievedChunk]]:
     """Return (label, prompt_material, chunks_used) for one side."""
     if side.type == "text":
         text = (side.content or "").strip()
@@ -95,6 +97,7 @@ async def _side_material(side: CompareSide, name: str, focus: str) -> tuple[str,
         return label, f"```\n{body}\n```", []
 
     scope = await resolve_scope(
+        user_id,
         project=side.project if side.type == "project" else None,
         document_id=side.document_id if side.type == "document" else None,
     )
@@ -125,14 +128,14 @@ def _unified_diff(left: CompareSide, right: CompareSide) -> str | None:
     return "\n".join(diff) if diff else ""
 
 
-async def stream_comparison(req: CompareRequest) -> AsyncGenerator[dict, None]:
+async def stream_comparison(req: CompareRequest, user_id: str | None = None) -> AsyncGenerator[dict, None]:
     """Yield SSE-ready dicts: diff (text vs text only), sources, chunk..., done."""
     from app.services.llm_factory import get_configured_llm
 
     focus = (req.focus or "").strip() or _DEFAULT_FOCUS
 
-    label_a, material_a, chunks_a = await _side_material(req.left, "A", focus)
-    label_b, material_b, chunks_b = await _side_material(req.right, "B", focus)
+    label_a, material_a, chunks_a = await _side_material(req.left, "A", focus, user_id)
+    label_b, material_b, chunks_b = await _side_material(req.right, "B", focus, user_id)
 
     diff = _unified_diff(req.left, req.right)
     if diff is not None:

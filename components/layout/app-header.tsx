@@ -1,6 +1,7 @@
 import { ArrowLeftRight, Brain, FileUser, Github, Settings, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { UserMenu } from "@/components/layout/user-menu";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -60,6 +61,7 @@ export function AppHeader({ activePath }: { activePath: string }) {
           >
             <Settings className="size-4" />
           </Link>
+          <UserMenu />
         </div>
       </div>
     </header>

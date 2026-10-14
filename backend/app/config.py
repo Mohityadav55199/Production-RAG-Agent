@@ -136,6 +136,13 @@ class Settings(BaseSettings):
     # ── Upload limits ──────────────────────────────────────────────────────────
     MAX_UPLOAD_SIZE_MB: int = 50            # per-file size limit
     MAX_FILES_PER_UPLOAD: int = 10
+    # ── Auth ──────────────────────────────────────────────────────────────────
+    JWT_SECRET: str | None = None           # REQUIRED in production; a random one is used (with a warning) if unset
+    JWT_EXPIRE_HOURS: int = 24 * 7
+    ALLOW_SIGNUP: bool = True               # set false to close registration
+    ADMIN_EMAILS: str = ""                  # comma-separated emails allowed to use the global /collections admin endpoints
+
+    RESUME_ATS_THRESHOLD: int = 82          # LaTeX/PDF are released only at or above this ATS score
     GITHUB_TOKEN: str | None = None        # optional: private repos + higher GitHub rate limit
 
     # ── PDF Chunking ────────────────────────────────────────────────────────────

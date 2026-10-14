@@ -33,6 +33,7 @@ class Conversation(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
+    user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -1,4 +1,4 @@
-import { getApiBase, ApiError } from "@/lib/api/client";
+import { getApiBase, ApiError, authHeaders, handleUnauthorized } from "@/lib/api/client";
 import { normalizeDocument } from "@/lib/api/normalize";
 import type { Document } from "@/lib/types";
 
@@ -26,6 +26,7 @@ export async function uploadDocuments(
     const apiBase = getApiBase();
     xhr.open("POST", `${apiBase}/upload`);
     xhr.responseType = "json";
+    for (const [name, value] of Object.entries(authHeaders())) xhr.setRequestHeader(name, value);
     
     // Set timeout to 15 minutes
     xhr.timeout = 900000;
@@ -82,6 +83,7 @@ export async function uploadDocuments(
           errorMsg = obj.message;
         }
       }
+      if (xhr.status === 401) handleUnauthorized();
       reject(new ApiError(xhr.status, errorMsg));
     };
 

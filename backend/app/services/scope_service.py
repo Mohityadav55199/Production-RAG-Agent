@@ -26,14 +26,17 @@ def _escape_like(value: str) -> str:
 
 
 async def resolve_scope(
+    user_id: str | None,
     project: str | None = None,
     document_id: str | None = None,
     kind: str = "all",
 ) -> ResolvedScope:
+    """Resolve what a question is about. The result always lists only ``user_id``'s own documents,
+    so retrieval can never reach another user's data."""
     if document_id:
         async with get_db_session() as session:
             doc = await session.get(Document, uuid.UUID(document_id))
-        if doc is None or doc.status != DocumentStatus.COMPLETED:
+        if doc is None or doc.user_id != user_id or doc.status != DocumentStatus.COMPLETED:
             raise ValueError("The selected document was not found or has not finished indexing.")
         return ResolvedScope(label=f"document '{doc.filename}'", document_ids=[str(doc.id)])
 
@@ -41,6 +44,7 @@ async def resolve_scope(
         async with get_db_session() as session:
             rows = (await session.execute(
                 select(Document.id, Document.filename).where(
+                    Document.user_id == user_id,
                     Document.filename.like(f"{_escape_like(project)}/%", escape="\\"),
                     Document.status == DocumentStatus.COMPLETED,
                 )
@@ -54,25 +58,25 @@ async def resolve_scope(
             overview_document_id=overview,
         )
 
+    conditions = [Document.user_id == user_id, Document.status == DocumentStatus.COMPLETED]
     if kind in ("documents", "projects"):
         cond = Document.filename.like("%/%")
-        cond = cond if kind == "projects" else ~cond
-        async with get_db_session() as session:
-            ids = (await session.execute(
-                select(Document.id).where(cond, Document.status == DocumentStatus.COMPLETED)
-            )).scalars().all()
-        label = "all imported code projects" if kind == "projects" else "all uploaded documents"
-        return ResolvedScope(label=label, document_ids=[str(i) for i in ids])
+        conditions.append(cond if kind == "projects" else ~cond)
+    async with get_db_session() as session:
+        ids = (await session.execute(select(Document.id).where(*conditions))).scalars().all()
+    label = {
+        "projects": "all imported code projects",
+        "documents": "all uploaded documents",
+    }.get(kind, "the whole knowledge base")
+    return ResolvedScope(label=label, document_ids=[str(i) for i in ids])
 
-    return ResolvedScope(label="the whole knowledge base", document_ids=None)
 
-
-async def list_sources() -> dict:
+async def list_sources(user_id: str | None) -> dict:
     """Projects (grouped by path prefix) and standalone documents that can be chatted with or compared."""
     async with get_db_session() as session:
         rows = (await session.execute(
             select(Document.id, Document.filename)
-            .where(Document.status == DocumentStatus.COMPLETED)
+            .where(Document.status == DocumentStatus.COMPLETED, Document.user_id == user_id)
             .order_by(Document.created_at.desc())
         )).all()
 

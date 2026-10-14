@@ -1,3 +1,4 @@
+import { RequireAuth } from "@/components/auth/require-auth";
 import { AppHeader } from "@/components/layout/app-header";
 
 export function AppShell({
@@ -8,6 +9,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   return (
+    <RequireAuth>
     <div className="min-h-screen bg-background">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-40 right-0 h-[500px] w-[500px] rounded-full bg-primary/5 blur-3xl" />
@@ -20,5 +22,6 @@ export function AppShell({
         {children}
       </main>
     </div>
+    </RequireAuth>
   );
 }

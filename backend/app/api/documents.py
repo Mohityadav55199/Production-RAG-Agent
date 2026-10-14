@@ -5,10 +5,11 @@ POST /upload  — Accept 1–N PDF files, run the ingestion pipeline,
                 return per-file status.
 """
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.config import get_settings
 from app.schemas.document import UploadResponse
+from app.services.auth import CurrentUser, get_current_user
 from app.services.document_service import process_uploads
 from app.utils.file_utils import validate_document_upload
 from app.utils.logging import get_logger
@@ -38,6 +39,7 @@ async def upload_documents(
         ...,
         description="One or more files (max 50 MB each).",
     ),
+    user: CurrentUser = Depends(get_current_user),
 ) -> UploadResponse:
     settings = get_settings()
 
@@ -81,7 +83,7 @@ async def upload_documents(
 
     # ── Run the ingestion pipeline ─────────────────────────────────────────────
     logger.info("Starting ingestion pipeline for %d file(s)", len(file_payloads))
-    response = await process_uploads(file_payloads)
+    response = await process_uploads(file_payloads, user.key)
 
     logger.info(
         "Upload complete — total=%d succeeded=%d failed=%d",

@@ -40,6 +40,17 @@ services:
         value: documents
       - key: CORS_ORIGINS
         value: '["*"]'
+      # Login: Render generates a random signing secret once and keeps it across deploys
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ALLOW_SIGNUP
+        value: "true"
+      # Comma-separated emails allowed to use the shared /collections admin API (optional)
+      - key: ADMIN_EMAILS
+        sync: false
+      # Optional: lets the GitHub importer read private repos and raises GitHub's rate limit
+      - key: GITHUB_TOKEN
+        sync: false
       - key: MAX_UPLOAD_SIZE_MB
         value: 50
       - key: MAX_FILES_PER_UPLOAD

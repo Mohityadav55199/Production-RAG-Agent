@@ -54,6 +54,7 @@ async def _create_document_record(
     filename: str,
     file_size: int,
     file_hash: str,
+    user_id: str | None,
 ) -> Document:
     from sqlalchemy.exc import IntegrityError
     
@@ -64,6 +65,7 @@ async def _create_document_record(
                 filename=filename,
                 file_size=file_size,
                 file_hash=file_hash,
+                user_id=user_id,
                 status=DocumentStatus.PENDING,
                 current_stage="pending"
             )
@@ -77,7 +79,7 @@ async def _create_document_record(
         async with get_db_session() as session:
             from sqlalchemy import select
             doc = await session.scalar(
-                select(Document).where(Document.file_hash == file_hash).limit(1)
+                select(Document).where(Document.file_hash == file_hash, Document.user_id == user_id).limit(1)
             )
             if not doc:
                 raise RuntimeError("IntegrityError caught but document not found on fallback.")
@@ -100,6 +102,7 @@ async def _process_single_file(
     filename: str,
     content: bytes,
     settings,
+    user_id: str | None = None,
 ) -> DocumentResult:
     """
     Run the full ingestion pipeline for one file with state checkpoints and resume.
@@ -113,7 +116,7 @@ async def _process_single_file(
         # ── 0. Check for existing duplicate or partial upload ─────────────────
         async with get_db_session() as session:
             existing_doc = await session.scalar(
-                select(Document).where(Document.file_hash == file_hash).limit(1)
+                select(Document).where(Document.file_hash == file_hash, Document.user_id == user_id).limit(1)
             )
             
             if existing_doc is not None:
@@ -138,7 +141,7 @@ async def _process_single_file(
 
         # ── 1. Persist metadata record (if not resuming) ──────────────────────
         if not is_resume:
-            doc = await _create_document_record(filename, file_size, file_hash)
+            doc = await _create_document_record(filename, file_size, file_hash, user_id)
         
         doc_id_str = str(doc.id)
 
@@ -179,7 +182,7 @@ async def _process_single_file(
         
         chunk_map = {}
         for c in chunks:
-            pid = generate_point_id(filename, c.page_number, c.section, c.heading, c.chunk_index, c.text)
+            pid = generate_point_id(filename, c.page_number, c.section, c.heading, c.chunk_index, c.text, scope=doc_id_str)
             chunk_map[pid] = c
             
         existing_ids = await get_existing_point_ids(list(chunk_map.keys()))
@@ -305,6 +308,7 @@ async def _process_single_file(
 
 async def process_uploads(
     files: list[tuple[str, bytes]],
+    user_id: str | None = None,
 ) -> UploadResponse:
     """
     Process multiple uploads sequentially.
@@ -313,7 +317,7 @@ async def process_uploads(
     results: list[DocumentResult] = []
 
     for filename, content in files:
-        result = await _process_single_file(filename, content, settings)
+        result = await _process_single_file(filename, content, settings, user_id)
         results.append(result)
 
     succeeded = sum(1 for r in results if r.status == DocumentStatus.COMPLETED)
