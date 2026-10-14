@@ -172,6 +172,26 @@ async def delete_by_document_id(document_id: str) -> None:
     logger.info("Deleted vectors for document_id=%s", document_id)
 
 
+async def delete_by_document_ids(document_ids: list[str], batch_size: int = 200) -> None:
+    """Remove the vectors of many documents with one request per batch."""
+    settings = get_settings()
+    client = get_qdrant_client()
+    for start in range(0, len(document_ids), batch_size):
+        await client.delete(
+            collection_name=settings.QDRANT_COLLECTION,
+            points_selector=qmodels.FilterSelector(
+                filter=qmodels.Filter(
+                    must=[qmodels.FieldCondition(
+                        key="document_id",
+                        match=qmodels.MatchAny(any=document_ids[start : start + batch_size]),
+                    )]
+                )
+            ),
+            wait=True,
+        )
+    logger.info("Deleted vectors for %d documents", len(document_ids))
+
+
 async def get_existing_point_ids(point_ids: list[str]) -> set[str]:
     """
     Given a list of Qdrant point IDs, returns a set of the ones that already exist

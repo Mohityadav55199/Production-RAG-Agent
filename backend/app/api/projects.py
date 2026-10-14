@@ -22,6 +22,7 @@ from app.services.project_import import (
     extract_project_from_zip,
     fetch_github_project,
 )
+from app.services.project_service import delete_project, list_projects
 from app.services.scope_service import list_sources
 from app.utils.logging import get_logger
 
@@ -47,6 +48,10 @@ class ProjectImportResponse(BaseModel):
 
 async def _ingest_in_background(project: ProjectFiles, user_id: str) -> None:
     try:
+        # Re-importing replaces the project, so old and new versions of a file never coexist
+        removed = await delete_project(user_id, project.project_name)
+        if removed:
+            logger.info("Replaced existing project '%s' (%d old files)", project.project_name, removed)
         result = await process_uploads(project.files, user_id)
         logger.info(
             "Project '%s' ingested — succeeded=%d failed=%d",
@@ -72,6 +77,26 @@ def _queue(project: ProjectFiles, user_id: str) -> ProjectImportResponse:
             f"They will appear in your documents as they finish.{note}"
         ),
     )
+
+
+@router.get("", summary="List imported projects with indexing progress")
+async def get_projects(user: CurrentUser = Depends(get_current_user)) -> dict:
+    return {"projects": await list_projects(user.key)}
+
+
+@router.delete("/{name}", summary="Delete an imported project and all its files")
+async def remove_project(name: str, user: CurrentUser = Depends(get_current_user)) -> dict:
+    try:
+        removed = await delete_project(user.key, name)
+    except Exception as exc:
+        logger.exception("Project delete failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not delete the project ({type(exc).__name__}). Nothing was lost; try again.",
+        ) from exc
+    if removed == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+    return {"deleted": name, "files": removed}
 
 
 @router.get("/sources", summary="List imported projects and standalone documents")

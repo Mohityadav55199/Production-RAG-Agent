@@ -134,6 +134,12 @@ def _overview_document(project: ProjectFiles, all_paths: list[str]) -> tuple[str
     return f"{project.project_name}/PROJECT_OVERVIEW.md", text.encode("utf-8")
 
 
+def safe_project_name(name: str) -> str:
+    """Project names prefix every file path, so they must not contain path separators."""
+    cleaned = re.sub(r"[\\/]+", "-", name).strip(" .-")
+    return cleaned[:80] or "project"
+
+
 def extract_project_from_zip(archive: bytes, project_name: str | None = None) -> ProjectFiles:
     """Read indexable source files out of a zip archive, entirely in memory."""
     if len(archive) > MAX_ARCHIVE_BYTES:
@@ -152,7 +158,7 @@ def extract_project_from_zip(archive: bytes, project_name: str | None = None) ->
     top_levels = {i.filename.replace("\\", "/").split("/", 1)[0] for i in entries}
     strip_root = len(top_levels) == 1 and all("/" in i.filename.replace("\\", "/") for i in entries)
     root_name = next(iter(top_levels)) if strip_root else None
-    project = ProjectFiles(project_name=project_name or root_name or "project")
+    project = ProjectFiles(project_name=safe_project_name(project_name or root_name or "project"))
 
     candidates: list[tuple[str, zipfile.ZipInfo]] = []
     for info in entries:
@@ -228,4 +234,4 @@ async def fetch_github_project(url: str, token: str | None = None) -> ProjectFil
                 if len(buf) > MAX_ARCHIVE_BYTES:
                     raise ValueError("Repository download is larger than 50 MB.")
 
-    return extract_project_from_zip(bytes(buf), project_name=repo)
+    return extract_project_from_zip(bytes(buf), project_name=f"{owner}-{repo}")
