@@ -40,6 +40,19 @@ class QueryRequest(BaseModel):
         None,
         description="Optional LLM model override (e.g., 'llama-3.3-70b-versatile', 'gemini-2.5-flash').",
     )
+    answer_style: Literal["detailed", "concise"] = Field(
+        "detailed",
+        description="'detailed' gives thorough, structured explanations; 'concise' gives short answers.",
+    )
+    project: str | None = Field(
+        None,
+        max_length=200,
+        description="Restrict retrieval to one imported code project (its name, e.g. 'my-repo').",
+    )
+    document_id: uuid.UUID | None = Field(
+        None,
+        description="Restrict retrieval to a single document.",
+    )
 
     model_config = {
         "json_schema_extra": {

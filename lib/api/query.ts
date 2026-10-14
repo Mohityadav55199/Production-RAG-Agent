@@ -2,23 +2,28 @@ import { getApiBase, ApiError } from "@/lib/api/client";
 import { normalizeSources } from "@/lib/api/normalize";
 import type { QuerySource } from "@/lib/types";
 
-export interface StreamQueryOptions {
-  query: string;
-  collectionId?: string | null;
-  signal?: AbortSignal;
+export type AnswerStyle = "detailed" | "concise";
+
+export interface StreamHandlers {
   onToken: (token: string) => void;
   onSources: (sources: QuerySource[]) => void;
   onDone: () => void;
   onError: (error: Error) => void;
+  onConversation?: (conversationId: string) => void;
+  onDiff?: (diff: string) => void;
 }
 
-function parseSseChunk(
-  chunk: string,
-  handlers: Pick<
-    StreamQueryOptions,
-    "onToken" | "onSources" | "onDone" | "onError"
-  >
-) {
+export interface StreamQueryOptions extends StreamHandlers {
+  query: string;
+  collectionId?: string | null;
+  conversationId?: string | null;
+  answerStyle?: AnswerStyle;
+  project?: string | null;
+  documentId?: string | null;
+  signal?: AbortSignal;
+}
+
+function parseSseChunk(chunk: string, handlers: StreamHandlers) {
   const lines = chunk.split("\n");
   for (const line of lines) {
     if (!line.startsWith("data:")) continue;
@@ -36,6 +41,20 @@ function parseSseChunk(
         handlers.onSources(normalizeSources(parsed.sources ?? parsed.data));
         continue;
       }
+
+      if (type === "diff") {
+        handlers.onDiff?.(String(parsed.diff ?? ""));
+        continue;
+      }
+
+      if (type === "done") {
+        if (parsed.conversation_id) {
+          handlers.onConversation?.(String(parsed.conversation_id));
+        }
+        continue;
+      }
+
+      if (type === "thinking") continue;
 
       if (type === "error") {
         handlers.onError(
@@ -59,25 +78,39 @@ function parseSseChunk(
   }
 }
 
-export async function streamQuery(options: StreamQueryOptions): Promise<void> {
+/** POST a JSON body and dispatch the Server-Sent Events response to handlers. */
+export async function streamSse(
+  path: string,
+  body: unknown,
+  handlers: StreamHandlers,
+  signal?: AbortSignal
+): Promise<void> {
   const apiBase = getApiBase();
-  const res = await fetch(`${apiBase}/query`, {
+  const res = await fetch(`${apiBase}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
     },
-    body: JSON.stringify({
-      query: options.query,
-      collection_id: options.collectionId ?? undefined,
-      stream: true,
-    }),
-    signal: options.signal,
+    body: JSON.stringify(body),
+    signal,
   });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new ApiError(res.status, text || res.statusText);
+    let message = text || res.statusText;
+    try {
+      const json = JSON.parse(text) as { detail?: unknown };
+      if (typeof json.detail === "string") message = json.detail;
+      else if (Array.isArray(json.detail)) {
+        message = json.detail
+          .map((d: { msg?: string }) => d?.msg ?? String(d))
+          .join(", ");
+      }
+    } catch {
+      // plain text error
+    }
+    throw new ApiError(res.status, message);
   }
 
   const contentType = res.headers.get("content-type") ?? "";
@@ -85,11 +118,11 @@ export async function streamQuery(options: StreamQueryOptions): Promise<void> {
   if (!contentType.includes("text/event-stream")) {
     const json = (await res.json()) as Record<string, unknown>;
     if (json.sources) {
-      options.onSources(normalizeSources(json.sources));
+      handlers.onSources(normalizeSources(json.sources));
     }
     const answer = String(json.answer ?? json.response ?? json.content ?? "");
-    if (answer) options.onToken(answer);
-    options.onDone();
+    if (answer) handlers.onToken(answer);
+    handlers.onDone();
     return;
   }
 
@@ -106,9 +139,28 @@ export async function streamQuery(options: StreamQueryOptions): Promise<void> {
 
     const parts = buffer.split("\n\n");
     buffer = parts.pop() ?? "";
-    for (const part of parts) parseSseChunk(part, options);
+    for (const part of parts) parseSseChunk(part, handlers);
   }
 
-  if (buffer.trim()) parseSseChunk(buffer, options);
-  options.onDone();
+  if (buffer.trim()) parseSseChunk(buffer, handlers);
+  handlers.onDone();
+}
+
+export async function streamQuery(options: StreamQueryOptions): Promise<void> {
+  const detailed = (options.answerStyle ?? "detailed") === "detailed";
+  return streamSse(
+    "/query",
+    {
+      query: options.query,
+      collection_id: options.collectionId ?? undefined,
+      conversation_id: options.conversationId ?? undefined,
+      answer_style: options.answerStyle ?? "detailed",
+      top_k: detailed ? 12 : 5,
+      project: options.project ?? undefined,
+      document_id: options.documentId ?? undefined,
+      stream: true,
+    },
+    options,
+    options.signal
+  );
 }

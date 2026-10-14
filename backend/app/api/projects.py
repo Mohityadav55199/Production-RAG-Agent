@@ -21,6 +21,7 @@ from app.services.project_import import (
     extract_project_from_zip,
     fetch_github_project,
 )
+from app.services.scope_service import list_sources
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -70,6 +71,12 @@ def _queue(project: ProjectFiles) -> ProjectImportResponse:
             f"They will appear in your documents as they finish.{note}"
         ),
     )
+
+
+@router.get("/sources", summary="List imported projects and standalone documents")
+async def get_sources() -> dict:
+    """Used by the Chat scope picker and the Compare view."""
+    return await list_sources()
 
 
 @router.post("/github", response_model=ProjectImportResponse, summary="Import a GitHub repository")

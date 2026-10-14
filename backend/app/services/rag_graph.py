@@ -29,7 +29,8 @@ from langgraph.graph import END, START, StateGraph
 from app.config import get_settings
 from app.schemas.query import SourceCitation
 from app.services.conversation_service import save_turn
-from app.services.retrieval_service import RetrievedChunk, retrieve_chunks
+from app.services.retrieval_service import RetrievedChunk, fetch_document_chunks, retrieve_chunks
+from app.services.scope_service import resolve_scope
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -38,7 +39,9 @@ logger = get_logger(__name__)
 # ── RAG system prompt ─────────────────────────────────────────────────────────
 
 _SYSTEM_TEMPLATE = """\
-You are an Enterprise RAG Assistant with access to a private document knowledge base.
+You are an expert assistant for a private knowledge base that contains
+documents and source code projects. You are currently answering questions
+about {scope}.
 
 CRITICAL RULES — violating any of these is an error:
 
@@ -46,33 +49,60 @@ CRITICAL RULES — violating any of these is an error:
    Do NOT preface your answer with a summary or recap of what you said in
    previous turns. Start your response with the answer to the current question.
 
-2. USE RETRIEVED DOCUMENTS as the primary source of truth.
-   Never invent facts that are not present in the retrieved context.
+2. USE RETRIEVED CONTEXT as the primary source of truth.
+   Never invent facts, files, functions or APIs that are not present in the
+   retrieved context. You MAY use general programming knowledge to explain
+   what the retrieved code does, why it is written that way, and how its
+   libraries/frameworks behave — but make clear what comes from the files.
 
 3. USE CONVERSATION HISTORY ONLY for coreference resolution.
-   History lets you resolve pronouns like "he", "she", "it", "them",
-   or phrases like "that project", "those skills", "previous answer".
-   DO NOT repeat, summarise, or reference prior answers beyond what is
-   strictly needed to understand the current question.
+   History lets you resolve references like "it", "that function",
+   "the previous file" or "explain more".
 
 4. REPEAT-REQUEST RULE: If the user says "list them again", "show as bullet
    points", "repeat that", or similar — output ONLY that specific list or
    item. Do not add any other information.
 
-5. BE CONCISE. Do not add context, background, or related information
-   unless the user explicitly asks for it.
+5. {style}
 
-6. CITE SOURCES inline: (filename.pdf, p. N) when using retrieved text.
-   For source code, cite the file path instead, e.g. (my-repo/src/main.py),
-   and show relevant code in fenced code blocks when explaining it.
+6. CITE SOURCES inline: (filename.pdf, p. N) for documents, or the file path
+   for code, e.g. (my-repo/src/main.py). Show relevant code in fenced code
+   blocks with a language tag when explaining it.
 
-7. If the retrieved context does not answer the question, say so clearly.
-   Do not guess.
+7. If the retrieved context only partly answers the question, answer what you
+   can, then say exactly what is missing (e.g. "the file that defines X was
+   not in the retrieved context"). Do not guess.
 
 ── Retrieved context ───────────────────────────────────────────────────────────────
 {context}
 ──────────────────────────────────────────────────────────────────────────────
 """
+
+_STYLE_INSTRUCTIONS = {
+    "concise": (
+        "BE CONCISE. Give a short, direct answer. Do not add context, "
+        "background, or related information unless the user explicitly asks."
+    ),
+    "detailed": (
+        "BE THOROUGH AND EDUCATIONAL. Give a complete, well-structured answer "
+        "using Markdown headings and bullet points. For code questions cover, "
+        "where relevant: purpose, architecture and folder structure, key "
+        "files/classes/functions and what each does, data and request flow "
+        "step by step, configuration and dependencies, how to run it, and "
+        "notable design decisions, risks or possible improvements. Quote short "
+        "code excerpts to illustrate. For documents, explain every relevant "
+        "point with supporting details from the text."
+    ),
+}
+
+# Retrieval settings per answer style. Detailed answers need breadth, so the
+# relative score-gap filter is disabled and the score floor is relaxed.
+_RETRIEVAL_BY_STYLE = {
+    "concise": {"min_score": None, "max_gap": -1.0},
+    "detailed": {"min_score": 0.55, "max_gap": None},
+}
+
+_MAX_CONTEXT_CHARS = 24_000   # keeps prompts inside Groq free-tier token limits
 
 
 # ── Graph state ───────────────────────────────────────────────────────────────
@@ -89,6 +119,10 @@ class RAGState(TypedDict):
     answer: str
     provider: str | None
     model: str | None
+    answer_style: str              # "detailed" | "concise"
+    project: str | None            # restrict to one imported code project
+    document_id: str | None        # or to a single document
+    scope_label: str
 
 
 # ── LLM factory ──────────────────────────────────────────────────────────────
@@ -102,19 +136,24 @@ def _build_llm(state: RAGState | None = None):
     return get_configured_llm(requested_provider=prov, requested_model=mod)
 
 
-# ── Graph nodes ───────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-async def _retrieve_node(state: RAGState) -> dict:
-    """
-    Embed the query and fetch the top-k chunks from Qdrant.
+def build_context(chunks: list[RetrievedChunk], max_chars: int = _MAX_CONTEXT_CHARS) -> str:
+    """Format chunks as numbered sources, stopping before the prompt gets too large."""
+    parts: list[str] = []
+    used = 0
+    for i, chunk in enumerate(chunks, start=1):
+        location = "source file" if "/" in chunk.filename else f"page {chunk.page_number}"
+        block = f"[Source {i}] {chunk.filename}, {location} (relevance: {chunk.score:.2f})\n{chunk.text}"
+        if parts and used + len(block) > max_chars:
+            break
+        parts.append(block)
+        used += len(block)
+    return "\n\n---\n\n".join(parts)
 
-    Produces:
-        chunks  — list[RetrievedChunk] for the generate node
-        sources — serialisable list[dict] emitted in the SSE sources event
-    """
-    chunks = await retrieve_chunks(query=state["query"], top_k=state["top_k"])
 
-    sources = [
+def to_sources(chunks: list[RetrievedChunk]) -> list[dict]:
+    return [
         {
             "document_id": c.document_id,
             "filename": c.filename,
@@ -126,12 +165,46 @@ async def _retrieve_node(state: RAGState) -> dict:
         for c in chunks
     ]
 
+
+# ── Graph nodes ───────────────────────────────────────────────────────────────
+
+async def _retrieve_node(state: RAGState) -> dict:
+    """
+    Embed the query and fetch the top-k chunks from Qdrant, restricted to the
+    selected project/document when one is chosen.
+
+    Produces:
+        chunks  — list[RetrievedChunk] for the generate node
+        sources — serialisable list[dict] emitted in the SSE sources event
+    """
+    scope = await resolve_scope(project=state.get("project"), document_id=state.get("document_id"))
+    style = state.get("answer_style") or "detailed"
+
+    chunks = await retrieve_chunks(
+        query=state["query"],
+        top_k=state["top_k"],
+        document_ids=scope.document_ids,
+        **_RETRIEVAL_BY_STYLE.get(style, _RETRIEVAL_BY_STYLE["detailed"]),
+    )
+
+    # For a code project, always include the generated overview (folder tree),
+    # so structural questions work even when no single file matches well.
+    if scope.overview_document_id:
+        seen = {(c.document_id, c.chunk_index) for c in chunks}
+        overview = [
+            c for c in await fetch_document_chunks(scope.overview_document_id, limit=3)
+            if (c.document_id, c.chunk_index) not in seen
+        ]
+        chunks = overview + chunks
+
     logger.info(
-        "retrieve_node: %d chunks for query=%r",
+        "retrieve_node: %d chunks for query=%r scope=%s style=%s",
         len(chunks),
         state["query"][:80],
+        scope.label,
+        style,
     )
-    return {"chunks": chunks, "sources": sources}
+    return {"chunks": chunks, "sources": to_sources(chunks), "scope_label": scope.label}
 
 
 async def _generate_node(state: RAGState) -> dict:
@@ -147,16 +220,8 @@ async def _generate_node(state: RAGState) -> dict:
     """
     llm = _build_llm(state)
 
-    # Build context block from retrieved chunks
     if state["chunks"]:
-        context_parts: list[str] = []
-        for i, chunk in enumerate(state["chunks"], start=1):
-            header = (
-                f"[Source {i}] {chunk.filename}, page {chunk.page_number} "
-                f"(relevance: {chunk.score:.2f})"
-            )
-            context_parts.append(f"{header}\n{chunk.text}")
-        context = "\n\n---\n\n".join(context_parts)
+        context = build_context(state["chunks"])
     else:
         context = (
             "No relevant documents were found in the knowledge base for this query."
@@ -184,8 +249,13 @@ async def _generate_node(state: RAGState) -> dict:
         f"Do NOT repeat or preface with content from previous turns.]\n\n"
         f"{state['query']}"
     )
+    style = state.get("answer_style") or "detailed"
     messages: list[BaseMessage] = [
-        SystemMessage(content=_SYSTEM_TEMPLATE.format(context=context)),
+        SystemMessage(content=_SYSTEM_TEMPLATE.format(
+            context=context,
+            scope=state.get("scope_label") or "the whole knowledge base",
+            style=_STYLE_INSTRUCTIONS.get(style, _STYLE_INSTRUCTIONS["detailed"]),
+        )),
         *trimmed_history,
         HumanMessage(content=focused_query),
     ]
@@ -255,6 +325,9 @@ async def stream_rag(
     top_k: int,
     provider: str | None = None,
     model: str | None = None,
+    answer_style: str = "detailed",
+    project: str | None = None,
+    document_id: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """
     Execute the RAG graph and yield typed event dicts for the SSE layer.
@@ -273,6 +346,9 @@ async def stream_rag(
         top_k:             Chunks to retrieve.
         provider:          Optional LLM provider override ("groq", "gemini").
         model:             Optional model override.
+        answer_style:      "detailed" (default) or "concise".
+        project:           Optional imported project name to restrict retrieval to.
+        document_id:       Optional single document to restrict retrieval to.
     """
     graph = get_rag_graph()
 
@@ -286,6 +362,10 @@ async def stream_rag(
         "answer": "",
         "provider": provider,
         "model": model,
+        "answer_style": answer_style,
+        "project": project,
+        "document_id": document_id,
+        "scope_label": "",
     }
 
     sources_emitted = False

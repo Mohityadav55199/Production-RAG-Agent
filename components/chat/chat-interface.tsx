@@ -9,13 +9,16 @@ import {
   Copy,
   Check,
   Loader2,
+  MessageSquarePlus,
   RotateCcw,
   Send,
   Square,
   User,
 } from "lucide-react";
 import { toast } from "sonner";
-import { streamQuery } from "@/lib/api/query";
+import { streamQuery, type AnswerStyle } from "@/lib/api/query";
+import { parseSourceKey } from "@/lib/api/sources";
+import { SourceSelect, useKnowledgeSources } from "@/components/chat/source-select";
 import { useApp } from "@/lib/context/app-context";
 import { suggestedQuestions, type ChatMessage } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -40,8 +43,30 @@ export function ChatInterface() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [lastQuery, setLastQuery] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [scope, setScope] = useState("all");
+  const [answerStyle, setAnswerStyle] = useState<AnswerStyle>("detailed");
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const { sources: knowledgeSources } = useKnowledgeSources();
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const isProjectScope = scope.startsWith("project:");
+  const starterQuestions = isProjectScope
+    ? [
+        "Explain this project: what it does, its architecture and main components.",
+        "Walk me through the folder structure and what each part is responsible for.",
+        "How does a request flow through the code, step by step?",
+        "What are the main dependencies and how do I run this project?",
+        "What bugs, risks or improvements do you see in this code?",
+      ]
+    : suggestedQuestions;
+
+  const startNewChat = () => {
+    abortRef.current?.abort();
+    setMessages([]);
+    setConversationId(null);
+    setLastQuery(null);
+  };
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -88,10 +113,16 @@ export function ChatInterface() {
       abortRef.current = new AbortController();
 
       try {
+        const { project, documentId } = parseSourceKey(scope);
         await streamQuery({
           query: query.trim(),
           collectionId: activeCollectionId,
+          conversationId,
+          answerStyle,
+          project,
+          documentId,
           signal: abortRef.current.signal,
+          onConversation: setConversationId,
           onToken: (token) => {
             setMessages((prev) =>
               prev.map((msg) =>
@@ -149,7 +180,7 @@ export function ChatInterface() {
         abortRef.current = null;
       }
     },
-    [activeCollectionId, isStreaming]
+    [activeCollectionId, isStreaming, scope, answerStyle, conversationId]
   );
 
   const stopGeneration = () => {
@@ -165,11 +196,54 @@ export function ChatInterface() {
   return (
     <div className="flex h-[calc(100vh-12rem)] flex-col gap-4">
       <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <CardHeader className="border-b border-border/60 pb-4">
-          <CardTitle>Chat</CardTitle>
-          <CardDescription>
-            Ask questions about your uploaded documents
-          </CardDescription>
+        <CardHeader className="space-y-3 border-b border-border/60 pb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>Ask</CardTitle>
+              <CardDescription>
+                Ask anything about your documents and code projects. Follow-up questions remember the conversation.
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={startNewChat}
+              disabled={messages.length === 0}
+            >
+              <MessageSquarePlus className="size-4" />
+              New chat
+            </Button>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+              <span className="shrink-0 text-muted-foreground">Ask about</span>
+              <SourceSelect
+                value={scope}
+                onChange={setScope}
+                sources={knowledgeSources}
+                includeAll
+                disabled={isStreaming}
+                className="flex-1"
+              />
+            </label>
+            <div className="inline-flex shrink-0 rounded-lg border p-0.5" role="group" aria-label="Answer style">
+              {(["detailed", "concise"] as const).map((style) => (
+                <button
+                  key={style}
+                  type="button"
+                  onClick={() => setAnswerStyle(style)}
+                  className={cn(
+                    "rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors",
+                    answerStyle === style
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {style}
+                </button>
+              ))}
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-1 flex-col p-0">
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
@@ -181,11 +255,13 @@ export function ChatInterface() {
                 <div>
                   <p className="font-medium">Start a conversation</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Ask anything about your knowledge base
+                    {isProjectScope
+                      ? "Try one of these to study the project in depth"
+                      : "Ask anything about your knowledge base"}
                   </p>
                 </div>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {suggestedQuestions.map((question) => (
+                <div className="flex max-w-2xl flex-wrap justify-center gap-2">
+                  {starterQuestions.map((question) => (
                     <Button
                       key={question}
                       variant="outline"
@@ -274,7 +350,9 @@ export function ChatInterface() {
                               {source.documentName && (
                                 <p className="font-medium">
                                   {source.documentName}
-                                  {source.page ? ` · p.${source.page}` : ""}
+                                  {source.page && !source.documentName.includes("/")
+                                    ? ` · p.${source.page}`
+                                    : ""}
                                 </p>
                               )}
                               {source.chunkText && (
@@ -322,7 +400,11 @@ export function ChatInterface() {
               <Textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask a question about your documents…"
+                placeholder={
+                  isProjectScope
+                    ? "Ask about this project's code, architecture, files…"
+                    : "Ask a question about your documents or code…"
+                }
                 className="min-h-[44px] resize-none"
                 rows={1}
                 disabled={isStreaming}

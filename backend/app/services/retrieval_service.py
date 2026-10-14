@@ -10,6 +10,8 @@ difference between document ingestion and query embedding.
 
 from dataclasses import dataclass
 
+from qdrant_client.http import models as qmodels
+
 from app.config import get_settings
 from app.db.qdrant import get_qdrant_client
 from app.services.embedding_service import embed_batch_with_retry
@@ -35,6 +37,9 @@ async def retrieve_chunks(
     top_k: int = 5,
     score_threshold: float = 0.0,
     collection_name: str | None = None,
+    document_ids: list[str] | None = None,
+    min_score: float | None = None,
+    max_gap: float | None = -1.0,
 ) -> list[RetrievedChunk]:
     """
     Embed *query* and return the top-k most semantically similar chunks.
@@ -45,6 +50,10 @@ async def retrieve_chunks(
         score_threshold:  Minimum cosine similarity to include a result.
                           Set to 0.0 to accept all results.
         collection_name:  Override the default collection from settings.
+        document_ids:     Restrict the search to these documents (e.g. one project).
+        min_score:        Override RETRIEVAL_MIN_SCORE.
+        max_gap:          Override RETRIEVAL_MAX_GAP; None disables the gap filter
+                          (detailed answers want breadth, not just the top hit).
 
     Returns:
         List of RetrievedChunk, sorted by score descending.
@@ -57,12 +66,24 @@ async def retrieve_chunks(
     vectors = await embed_batch_with_retry([query], task_type="RETRIEVAL_QUERY")
     query_vector = vectors[0]
 
+    floor = settings.RETRIEVAL_MIN_SCORE if min_score is None else min_score
+    gap = settings.RETRIEVAL_MAX_GAP if max_gap == -1.0 else max_gap
+
+    query_filter = None
+    if document_ids is not None:
+        if not document_ids:
+            return []
+        query_filter = qmodels.Filter(
+            must=[qmodels.FieldCondition(key="document_id", match=qmodels.MatchAny(any=document_ids))]
+        )
+
     if hasattr(client, "query_points"):
         query_response = await client.query_points(
             collection_name=coll,
             query=query_vector,
             limit=top_k,
             with_payload=True,
+            query_filter=query_filter,
         )
         search_results = query_response.points
     else:
@@ -71,6 +92,7 @@ async def retrieve_chunks(
             query_vector=query_vector,
             limit=top_k,
             with_payload=True,
+            query_filter=query_filter,
         )
 
     # Log all raw candidate scores before filtering
@@ -134,15 +156,15 @@ async def retrieve_chunks(
             # Ensure descending order
             valid_candidates.sort(key=lambda c: c.score, reverse=True)
             top_score = valid_candidates[0].score
-            gap_cutoff = top_score - settings.RETRIEVAL_MAX_GAP
-            logger.info("Top score for query is %.4f. Gap threshold (max_gap=%.4f) cutoff is %.4f", top_score, settings.RETRIEVAL_MAX_GAP, gap_cutoff)
+            gap_cutoff = top_score - gap if gap is not None else float("-inf")
+            logger.info("Top score for query is %.4f. Gap cutoff is %.4f (max_gap=%s)", top_score, gap_cutoff, gap)
             
             for c in valid_candidates:
                 # Apply absolute score floor
-                if c.score < settings.RETRIEVAL_MIN_SCORE:
+                if c.score < floor:
                     logger.info(
                         "Filtering out chunk filename='%s' index=%d (score=%.4f < floor=%.2f)",
-                        c.filename, c.chunk_index, c.score, settings.RETRIEVAL_MIN_SCORE
+                        c.filename, c.chunk_index, c.score, floor
                     )
                     continue
                 # Apply relative score gap limit
@@ -155,10 +177,38 @@ async def retrieve_chunks(
                 chunks.append(c)
 
     logger.info(
-        "Retrieved %d chunks above threshold=%.3f (gap=%.3f) for query (top_k=%d)",
+        "Retrieved %d chunks above threshold=%.3f (gap=%s) for query (top_k=%d)",
         len(chunks),
-        settings.RETRIEVAL_MIN_SCORE,
-        settings.RETRIEVAL_MAX_GAP,
+        floor,
+        gap,
         top_k,
     )
+    return chunks
+
+
+async def fetch_document_chunks(document_id: str, limit: int = 20) -> list[RetrievedChunk]:
+    """Return a document's chunks in order, without a similarity search (e.g. a project overview)."""
+    settings = get_settings()
+    client = get_qdrant_client()
+    points, _ = await client.scroll(
+        collection_name=settings.QDRANT_COLLECTION,
+        scroll_filter=qmodels.Filter(
+            must=[qmodels.FieldCondition(key="document_id", match=qmodels.MatchValue(value=document_id))]
+        ),
+        limit=limit,
+        with_payload=True,
+        with_vectors=False,
+    )
+    chunks = [
+        RetrievedChunk(
+            document_id=document_id,
+            filename=(p.payload or {}).get("filename", "unknown"),
+            page_number=int((p.payload or {}).get("page_number", 1)),
+            chunk_index=int((p.payload or {}).get("chunk_index", 0)),
+            text=(p.payload or {}).get("text", ""),
+            score=1.0,
+        )
+        for p in points
+    ]
+    chunks.sort(key=lambda c: c.chunk_index)
     return chunks
