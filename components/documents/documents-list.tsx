@@ -26,6 +26,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AuthImage } from "@/components/ui/auth-image";
 import { formatBytes, formatRelativeTime } from "@/lib/utils";
 
 const typeIcons: Record<string, typeof FileText> = {
@@ -111,8 +112,12 @@ export function DocumentsList() {
                   transition={{ duration: 0.3, delay: index * 0.03 }}
                   className="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-muted/40"
                 >
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                    <Icon className="size-4 text-muted-foreground" />
+                  <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                    {doc.previewAssetId ? (
+                      <AuthImage assetId={doc.previewAssetId} alt={doc.name} className="size-full object-cover" />
+                    ) : (
+                      <Icon className="size-4 text-muted-foreground" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{doc.name}</p>

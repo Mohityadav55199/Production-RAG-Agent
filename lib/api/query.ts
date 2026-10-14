@@ -21,6 +21,8 @@ export interface StreamQueryOptions extends StreamHandlers {
   project?: string | null;
   documentId?: string | null;
   scopeKind?: "all" | "documents" | "projects";
+  /** Images to ask about (already downscaled). Needs a Gemini key on the server. */
+  images?: { mime: string; data: string }[];
   signal?: AbortSignal;
 }
 
@@ -158,6 +160,7 @@ export async function streamQuery(options: StreamQueryOptions): Promise<void> {
       answer_style: options.answerStyle ?? "detailed",
       top_k: detailed ? 12 : 5,
       scope_kind: options.scopeKind ?? "all",
+      images: options.images?.length ? options.images : undefined,
       project: options.project ?? undefined,
       document_id: options.documentId ?? undefined,
       stream: true,

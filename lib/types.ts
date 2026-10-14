@@ -10,6 +10,8 @@ export interface Document {
   uploadedAt: Date;
   collectionId?: string;
   error?: string;
+  /** Set when the document is a picture: show it from GET /assets/{id}?size=thumb */
+  previewAssetId?: string;
 }
 
 export interface DashboardStats {
@@ -32,6 +34,8 @@ export interface QuerySource {
   chunkText?: string;
   page?: number;
   score?: number;
+  /** Stored pictures for this source's page (figures, or the image itself): GET /assets/{id} */
+  images?: string[];
 }
 
 export interface HealthInfo {
@@ -50,6 +54,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: QuerySource[];
+  /** Images the user attached to this question (local previews only; never stored). */
+  attachments?: { id: string; name: string; previewUrl: string }[];
   isStreaming?: boolean;
   error?: string;
 }

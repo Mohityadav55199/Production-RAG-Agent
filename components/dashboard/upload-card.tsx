@@ -209,7 +209,7 @@ export function UploadCard({ disabled, onUploadComplete }: UploadCardProps) {
                     : "Drag & drop your files"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              PDF, DOCX, PPTX, XLSX, CSV, TXT, MD files — up to 50 MB each
+              PDF, DOCX, PPTX, XLSX, CSV, TXT, MD and images (PNG, JPG, WebP), up to 50 MB each
             </p>
             {(uploading || processing) && (
               <Progress

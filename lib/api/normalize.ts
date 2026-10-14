@@ -37,6 +37,12 @@ function inferType(name: string, rawType?: unknown): string {
     txt: "Text",
     docx: "Document",
     xlsx: "Spreadsheet",
+    png: "Image",
+    jpg: "Image",
+    jpeg: "Image",
+    webp: "Image",
+    bmp: "Image",
+    tiff: "Image",
   };
   return map[ext ?? ""] ?? "Document";
 }
@@ -64,6 +70,7 @@ export function normalizeDocument(raw: Record<string, unknown>): Document {
     uploadedAt: uploadedRaw ? new Date(uploadedRaw) : new Date(),
     collectionId: pick<string>(raw, ["collection_id", "collectionId"]),
     error: pick<string>(raw, ["error", "error_message", "message"]),
+    previewAssetId: pick<string>(raw, ["preview_asset_id", "previewAssetId"]) ?? undefined,
   };
 }
 
@@ -219,6 +226,7 @@ export function normalizeSources(raw: unknown): QuerySource[] {
       ]),
       page: pick<number>(obj, ["page", "page_number"]),
       score: pick<number>(obj, ["score", "relevance"]),
+      images: Array.isArray(obj.images) ? obj.images.map(String) : [],
     };
   });
 }
