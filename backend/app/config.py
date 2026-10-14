@@ -158,6 +158,14 @@ class Settings(BaseSettings):
     ALLOW_SIGNUP: bool = True               # set false to close registration
     RESUME_DAILY_LIMIT: int = 20            # tailoring runs per user per 24h (protects the shared LLM quota)
 
+    # ── Images ────────────────────────────────────────────────────────────────
+    CHAT_MAX_IMAGES: int = 3                 # images attached to one chat question
+    CHAT_IMAGE_MAX_BYTES: int = 4 * 1024 * 1024   # per image, after the browser's own downscaling
+    IMAGE_MAX_PIXELS: int = 25_000_000       # refuse anything larger: bombs, and a 512 MB server can't decode more
+    IMAGE_CAPTION_MAX_PER_DOC: int = 6       # AI captions generated per uploaded document (quota/time)
+    MAX_ASSETS_PER_DOC: int = 40             # figures kept per document
+    VISION_REQUESTS_PER_HOUR: int = 40       # per user: image questions + code-screenshot reads
+
     RESUME_ATS_THRESHOLD: int = 82          # LaTeX/PDF are released only at or above this ATS score
     GITHUB_TOKEN: str | None = None        # optional: private repos + higher GitHub rate limit
 
