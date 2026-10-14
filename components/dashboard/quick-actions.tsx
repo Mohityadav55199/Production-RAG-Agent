@@ -2,14 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import {
-  Upload,
-  MessageSquare,
-  Search,
-  Settings2,
-  ArrowUpRight,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { MessageSquare, Settings2, ArrowRight } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -18,12 +11,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { quickActions } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 const iconMap = {
-  upload: Upload,
   message: MessageSquare,
-  search: Search,
   settings: Settings2,
 };
 
@@ -36,78 +26,31 @@ export function QuickActions() {
     >
       <Card>
         <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>Common tasks to get started quickly</CardDescription>
+          <CardTitle>What next?</CardTitle>
+          <CardDescription>
+            Once a document shows &quot;Completed&quot;, you can use it here.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          {quickActions.map((action, index) => {
+        <CardContent className="space-y-3">
+          {quickActions.map((action) => {
             const Icon = iconMap[action.icon];
-            const isPrimary = action.id === "upload";
-
-            const content = (
-              <>
-                <div
-                  className={cn(
-                    "flex size-10 shrink-0 items-center justify-center rounded-lg",
-                    isPrimary
-                      ? "bg-primary-foreground/15"
-                      : "bg-primary/10 text-primary"
-                  )}
-                >
+            return (
+              <Link
+                key={action.id}
+                href={action.href}
+                className="group flex items-start gap-3 rounded-xl border p-4 transition-colors hover:border-primary/30 hover:bg-primary/5"
+              >
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Icon className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{action.label}</p>
-                  <p
-                    className={cn(
-                      "mt-0.5 truncate text-xs",
-                      isPrimary
-                        ? "text-primary-foreground/70"
-                        : "text-muted-foreground"
-                    )}
-                  >
+                  <p className="text-sm font-semibold">{action.label}</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     {action.description}
                   </p>
                 </div>
-                <ArrowUpRight
-                  className={cn(
-                    "size-4 shrink-0 opacity-0 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:opacity-100",
-                    isPrimary
-                      ? "text-primary-foreground/60"
-                      : "text-muted-foreground"
-                  )}
-                />
-              </>
-            );
-
-            return (
-              <motion.div
-                key={action.id}
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.3, delay: 0.2 + index * 0.05 }}
-              >
-                {action.id === "upload" ? (
-                  <Button
-                    variant="default"
-                    className="group h-auto w-full justify-start gap-3 px-4 py-4 text-left"
-                    onClick={() => {
-                      const el = document.getElementById("upload");
-                      el?.scrollIntoView({ behavior: "smooth" });
-                    }}
-                  >
-                    {content}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    className="group h-auto w-full justify-start gap-3 px-4 py-4 text-left hover:border-primary/30 hover:bg-primary/5"
-                    asChild
-                  >
-                    <Link href={action.href}>{content}</Link>
-                  </Button>
-                )}
-              </motion.div>
+                <ArrowRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </Link>
             );
           })}
         </CardContent>

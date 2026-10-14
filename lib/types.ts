@@ -56,30 +56,16 @@ export interface ChatMessage {
 
 export const quickActions = [
   {
-    id: "upload",
-    label: "Upload Document",
-    description: "Add PDFs, docs, or text files",
-    icon: "upload" as const,
-    href: "/dashboard#upload",
-  },
-  {
     id: "chat",
-    label: "Start Chat",
-    description: "Ask questions about your docs",
+    label: "Ask your documents",
+    description: "Chat with the AI and get answers with page citations.",
     icon: "message" as const,
     href: "/chat",
   },
   {
-    id: "search",
-    label: "Semantic Search",
-    description: "Find content across all files",
-    icon: "search" as const,
-    href: "/chat",
-  },
-  {
-    id: "settings",
-    label: "Manage Index",
-    description: "Re-index or remove documents",
+    id: "documents",
+    label: "Manage documents",
+    description: "View, re-index or delete the files you uploaded.",
     icon: "settings" as const,
     href: "/collections",
   },

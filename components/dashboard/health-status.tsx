@@ -39,6 +39,15 @@ export function HealthStatus() {
     return <RefreshCw className="size-4 animate-spin" />;
   };
 
+  const isOnline = (v: string | undefined) =>
+    ["connected", "ok", "healthy"].includes(String(v ?? "").toLowerCase());
+  const offline = services.filter((s) => !isOnline(s.value));
+  const summary = loading
+    ? "Checking services…"
+    : offline.length === 0
+      ? "All systems operational"
+      : `${offline.length} service${offline.length > 1 ? "s" : ""} need attention: ${offline.map((s) => s.name).join(", ")}`;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -50,8 +59,10 @@ export function HealthStatus() {
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div>
             <CardTitle className="text-base font-bold">System Health</CardTitle>
-            <CardDescription>
-              Status of backend services and dependencies
+            <CardDescription
+              className={offline.length === 0 && !loading ? "text-emerald-600" : "text-amber-600"}
+            >
+              {summary}
             </CardDescription>
           </div>
           <Button
