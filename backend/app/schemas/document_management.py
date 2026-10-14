@@ -25,6 +25,8 @@ class DocumentSummary(BaseModel):
     error: str | None = None
     created_at: datetime
     updated_at: datetime
+    # Set when the document is an image: fetch GET /assets/{id}?size=thumb to show it
+    preview_asset_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 

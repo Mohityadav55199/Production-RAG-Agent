@@ -17,6 +17,7 @@ from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.admin import router as admin_router
+from app.api.assets import router as assets_router
 from app.api.auth import router as auth_router
 from app.api.collections import router as collections_router
 from app.api.compare import router as compare_router
@@ -32,6 +33,7 @@ from app.db import models  # noqa: F401 — registers Phase 2 tables with Base.m
 from app.db import conversation_models  # noqa: F401 — registers Phase 4 tables
 from app.db import resume_models  # noqa: F401 — registers resume tables
 from app.db import auth_models  # noqa: F401 — registers the users table
+from app.db import asset_models  # noqa: F401 — registers the document_assets table
 from app.db.postgres import dispose_engine, get_engine
 from app.db.postgres import Base
 from app.db.qdrant import close_qdrant_client
@@ -142,6 +144,7 @@ def create_app() -> FastAPI:
     protected = [Depends(get_current_user)]
     app.include_router(documents_router, dependencies=protected)             # POST /upload
     app.include_router(document_management_router, dependencies=protected)   # GET/DELETE /documents
+    app.include_router(assets_router, dependencies=protected)                # GET /assets/{id}
     app.include_router(projects_router, dependencies=protected)              # /projects/*
     app.include_router(resume_router, dependencies=protected)                # /resume/*
     app.include_router(compare_router, dependencies=protected)               # POST /compare (SSE)

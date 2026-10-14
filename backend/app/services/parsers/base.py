@@ -10,6 +10,19 @@ class ExtractedPage:
     char_end: int           # exclusive end offset
 
 @dataclass
+class ExtractedImage:
+    """A picture found in (or being) a document, already re-encoded as clean JPEG variants."""
+    page_number: int            # 1-indexed page/slide it appears on
+    display: bytes              # up to 1600 px
+    thumb: bytes                # up to 320 px
+    width: int
+    height: int
+    kind: str = "figure"        # "image" when the whole document is a picture
+    caption: str | None = None  # AI description, when available
+    position: int = 0           # order within the page
+
+
+@dataclass
 class ExtractionResult:
     """Result returned by extractors."""
     pages: list[ExtractedPage] = field(default_factory=list)
@@ -23,6 +36,9 @@ class ExtractionResult:
     ocr_used: bool = False
     ocr_engine: str | None = None
     extraction_method: str = "native"
+
+    # Pictures found in the document (figures, slides, the image itself)
+    images: list[ExtractedImage] = field(default_factory=list)
 
     def page_for_offset(self, char_offset: int) -> int:
         """Return the 1-indexed page number that contains the given character offset."""

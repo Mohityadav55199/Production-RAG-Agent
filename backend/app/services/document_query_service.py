@@ -22,6 +22,7 @@ from app.schemas.document_management import (
     DocumentListResponse,
     DocumentSummary,
 )
+from app.services.asset_service import preview_assets
 from app.services.vector_service import delete_by_document_id
 from app.utils.logging import get_logger
 
@@ -79,6 +80,8 @@ async def list_documents(
 
     pages = max(1, math.ceil(total / limit))
 
+    previews = await preview_assets([row.id for row in rows], user_id)
+
     summaries = [
         DocumentSummary(
             document_id=row.id,
@@ -90,6 +93,7 @@ async def list_documents(
             error=row.error_message,
             created_at=row.created_at,
             updated_at=row.updated_at,
+            preview_asset_id=previews.get(row.id),
         )
         for row in rows
     ]

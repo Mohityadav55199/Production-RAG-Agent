@@ -31,6 +31,7 @@ from app.config import get_settings
 from app.db.models import Document, DocumentStatus
 from app.db.postgres import get_db_session
 from app.schemas.document import DocumentResult, UploadResponse
+from app.services.asset_service import replace_assets
 from app.services.chunker import build_chunks
 from app.services.embedding_service import embed_batch_with_retry
 from app.services.parsers import get_parser_for_file
@@ -175,6 +176,13 @@ async def _run_pipeline(
         parser = get_parser_for_file(filename)
         # Parsing is CPU-bound/blocking; keep it off the event loop so health checks stay responsive
         extraction = await asyncio.to_thread(parser.parse, content, filename=filename)
+
+        # Keep the document's pictures so answers can show them. Never let this fail the ingestion.
+        if extraction.images:
+            try:
+                await replace_assets(doc.id, doc.user_id, extraction.images)
+            except Exception:
+                logger.exception("Could not store the images of '%s'; continuing without them", filename)
 
         # ── 3. Mark CHUNKING ──────────────────────────────────────────────────
         await _update_document(
