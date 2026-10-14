@@ -121,9 +121,9 @@ export async function apiFetch<T>(
 
     if (res.status === 204) return undefined as T;
     return res.json() as Promise<T>;
-  } catch (err: any) {
+  } catch (err: unknown) {
     clearTimeout(timeoutId);
-    if (err.name === "AbortError") {
+    if (err instanceof Error && err.name === "AbortError") {
       throw new ApiError(408, "Request timed out");
     }
     throw err;

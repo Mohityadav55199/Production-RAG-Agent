@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 
 export function HealthStatus({ compact = false }: { compact?: boolean }) {
-  const { health, loading, error, refetch } = useHealth();
+  const { health, loading, refetch } = useHealth();
 
   const services = [
     { name: "Backend API", key: "backend", value: health?.backend },

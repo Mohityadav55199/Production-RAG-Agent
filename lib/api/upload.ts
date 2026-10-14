@@ -76,7 +76,7 @@ export async function uploadDocuments(
         if (typeof obj.detail === "string") {
           errorMsg = obj.detail;
         } else if (Array.isArray(obj.detail)) {
-          errorMsg = obj.detail.map((d: any) => d?.msg ?? String(d)).join(", ");
+          errorMsg = obj.detail.map((d: { msg?: string } | string) => (typeof d === "string" ? d : d?.msg ?? String(d))).join(", ");
         } else if (typeof obj.error === "string") {
           errorMsg = obj.error;
         } else if (typeof obj.message === "string") {
