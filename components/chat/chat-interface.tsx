@@ -65,6 +65,11 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
       ]
     : suggestedQuestions;
 
+  // Switching project/document starts a fresh conversation (the old history is about something else)
+  useEffect(() => {
+    setConversationId(null);
+  }, [scope]);
+
   const startNewChat = () => {
     abortRef.current?.abort();
     setMessages([]);
