@@ -6,10 +6,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import {
+  ApiError,
   UNAUTHORIZED_EVENT,
   apiFetch,
   clearToken,
@@ -22,7 +24,12 @@ export interface AuthUser {
   email: string;
 }
 
-type AuthStatus = "loading" | "authed" | "anon";
+/**
+ * loading      checking a stored session
+ * waking       the server did not answer yet (free hosting sleeps when idle); retrying
+ * unreachable  retries exhausted; the stored session is kept so the user can retry
+ */
+export type AuthStatus = "loading" | "waking" | "authed" | "anon" | "unreachable";
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -30,6 +37,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  retry: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -39,34 +47,61 @@ interface AuthResponse {
   user: AuthUser;
 }
 
+const WAKE_RETRY_DELAY_MS = 5000;
+const WAKE_GIVE_UP_MS = 120_000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [status, setStatus] = useState<AuthStatus>("loading");
+  const [attempt, setAttempt] = useState(0);
+  const runId = useRef(0);
+  const invalidateRuns = useCallback(() => {
+    runId.current++;
+  }, []);
 
-  // Validate a stored token on first load
+  // Validate a stored token on load. Only a 401 means "not logged in"; timeouts and 5xx while the
+  // server wakes up are retried, and never discard a valid session.
   useEffect(() => {
-    let cancelled = false;
+    const id = ++runId.current;
+    const current = () => id === runId.current;
+
     if (!getToken()) {
       setStatus("anon");
       return;
     }
-    apiFetch<AuthUser>("/auth/me")
-      .then((me) => {
-        if (cancelled) return;
-        setUser(me);
-        setStatus("authed");
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        // A 401 already cleared the token. Network errors keep it so a reload can retry.
-        if (err?.status === 401) clearToken();
-        setUser(null);
-        setStatus("anon");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+
+    (async () => {
+      const startedAt = Date.now();
+      setStatus("loading");
+      while (current()) {
+        try {
+          const me = await apiFetch<AuthUser>("/auth/me", { timeout: 20000 });
+          if (!current()) return;
+          setUser(me);
+          setStatus("authed");
+          return;
+        } catch (err) {
+          if (!current()) return;
+          if (err instanceof ApiError && err.status === 401) {
+            clearToken();
+            setUser(null);
+            setStatus("anon");
+            return;
+          }
+          if (Date.now() - startedAt > WAKE_GIVE_UP_MS) {
+            setStatus("unreachable");
+            return;
+          }
+          setStatus("waking");
+          await sleep(WAKE_RETRY_DELAY_MS);
+        }
+      }
+    })();
+
+    return invalidateRuns;
+  }, [attempt, invalidateRuns]);
 
   // Any API call that comes back 401 ends the session everywhere
   useEffect(() => {
@@ -83,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
-      timeout: 30000,
+      timeout: 60000, // a sleeping server can take a while to answer the first request
     });
     setToken(data.token);
     setUser(data.user);
@@ -94,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signup = useCallback((email: string, password: string) => authenticate("/auth/signup", email, password), [authenticate]);
 
   const logout = useCallback(() => {
+    invalidateRuns();
     clearToken();
     try {
       // Per-browser UI state that belongs to the previous user
@@ -103,11 +139,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
     setStatus("anon");
-  }, []);
+  }, [invalidateRuns]);
+
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   const value = useMemo(
-    () => ({ user, status, login, signup, logout }),
-    [user, status, login, signup, logout]
+    () => ({ user, status, login, signup, logout, retry }),
+    [user, status, login, signup, logout, retry]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
