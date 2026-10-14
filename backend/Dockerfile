@@ -16,9 +16,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+# requirements.lock pins every package (direct and transitive) to the versions tested together,
+# so a new upstream release can't silently change what gets deployed. To upgrade: install
+# requirements.txt in a clean python:3.12-slim container and run `pip freeze > requirements.lock`.
+COPY requirements.txt requirements.lock ./
 RUN pip install --upgrade pip \
- && pip install --no-cache-dir --prefix=/install -r requirements.txt
+ && pip install --no-cache-dir --prefix=/install -c requirements.lock -r requirements.txt
 
 
 # ─────────────────────────────────────────────────────────────────────────────
