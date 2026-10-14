@@ -201,7 +201,19 @@ npm run dev
    - `DATABASE_URL`: Your PostgreSQL URL from [Neon](https://neon.tech) or [Supabase](https://supabase.com)
    - `QDRANT_URL`: Your cluster URL from [Qdrant Cloud](https://cloud.qdrant.io)
    - `QDRANT_API_KEY`: Your Qdrant Cloud API key
+   - `GROQ_API_KEY`: Your Groq key (the LLM used for chat and the resume agents)
+   - `JWT_SECRET`: **Required.** A long random string that signs login tokens
+     (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Without it everyone is logged out on every restart.
+   - `TRUSTED_PROXY_HOPS`: `1` (Render's load balancer). Used to find the real client address for login rate limits.
+   - Optional: `ALLOW_SIGNUP` (`false` closes registration), `GITHUB_TOKEN` (private repos), `RESUME_DAILY_LIMIT`.
 5. Click **Create Web Service**. Your backend will be live at `https://production-rag-agent.onrender.com`.
+6. **Register your own account right away.** The first account becomes the administrator and adopts any data
+   that existed before accounts were added.
+
+> **Free-tier note:** Render's free instances sleep when idle, so the first request after a pause can take up to a
+> minute (the app shows "Waking up the server…"). Long streams (resume tailoring takes 1–3 minutes) can hit proxy
+> time limits when routed through Vercel's `/api` rewrite; if you see that, set `NEXT_PUBLIC_API_URL` on Vercel to the
+> Render URL so the browser calls the backend directly, and set the backend's `CORS_ORIGINS` to your Vercel domain.
 
 ### Part 2: Deploy Frontend on Vercel
 1. Log in to [Vercel](https://vercel.com/new) and import `Mohityadav55199/Production-RAG-Agent`.
@@ -209,6 +221,30 @@ npm run dev
 3. Add Environment Variable:
    - `BACKEND_URL`: `https://production-rag-agent.onrender.com` *(your Render backend URL)*
 4. Click **Deploy**.
+
+---
+
+## 🧪 Testing
+
+CI (`.github/workflows/ci.yml`) runs the backend tests, and the frontend type check, lint and build on every push.
+
+```bash
+# Backend (from backend/). The API tests need a PostgreSQL database whose NAME CONTAINS "test":
+# the schema is wiped at the start of the run.
+docker run -d --name ragtest -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=ragtest -p 5433:5432 postgres:16
+pip install -c requirements.lock -r requirements-dev.txt
+TEST_DATABASE_URL=postgresql+asyncpg://postgres:pw@localhost:5433/ragtest pytest
+
+# Frontend (from the repo root)
+npm run typecheck && npm run lint && npm run build
+```
+
+Without `TEST_DATABASE_URL` the API tests are skipped and the rest run. The PDF-compile tests need `pdflatex`
+(they run inside the Docker image). Older ad-hoc scripts that talk to a running server live in
+`backend/scripts/manual_tests/`.
+
+Backend dependencies are pinned in `backend/requirements.lock` (used by the Docker build). To upgrade, install
+`requirements.txt` in a clean `python:3.12-slim` container and run `pip freeze > requirements.lock`.
 
 ---
 
