@@ -6,7 +6,7 @@ import { useHealth } from "@/lib/hooks/use-health";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-export function HealthStatus() {
+export function HealthStatus({ compact = false }: { compact?: boolean }) {
   const { health, loading, error, refetch } = useHealth();
 
   const services = [
@@ -47,6 +47,34 @@ export function HealthStatus() {
     : offline.length === 0
       ? "All systems operational"
       : `${offline.length} service${offline.length > 1 ? "s" : ""} need attention: ${offline.map((s) => s.name).join(", ")}`;
+
+  if (compact) {
+    return (
+      <div className="flex flex-col gap-3 rounded-xl border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="font-semibold">System Health</span>
+          <span className={offline.length === 0 && !loading ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>
+            {summary}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {services.map((service) => (
+            <span
+              key={service.key}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusColor(service.value)}`}
+              title={`${service.name}: ${isOnline(service.value) ? "Online" : "Needs attention"}`}
+            >
+              <span className={`size-1.5 rounded-full ${isOnline(service.value) ? "bg-emerald-500" : "bg-amber-500"}`} />
+              <span className="text-foreground">{service.name}</span>
+            </span>
+          ))}
+          <Button variant="ghost" size="icon" onClick={refetch} disabled={loading} className="size-7" aria-label="Refresh health">
+            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div
