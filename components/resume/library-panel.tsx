@@ -35,10 +35,19 @@ export function useResumeLibrary() {
     refetch();
   }, [refetch]);
 
-  // Indexing runs in the background; keep refreshing until every resume is ready
+  // Indexing runs in the background; keep refreshing until every resume is ready, but give up after
+  // a few minutes so a stuck job can't keep the page polling forever (the server re-indexes on restart).
+  const pendingSince = useRef<number | null>(null);
   useEffect(() => {
-    if (!resumes.some((r) => r.index_status === "pending")) return;
-    const id = setInterval(refetch, 4000);
+    const pending = resumes.some((r) => r.index_status === "pending");
+    if (!pending) {
+      pendingSince.current = null;
+      return;
+    }
+    pendingSince.current ??= Date.now();
+    const id = setInterval(() => {
+      if (Date.now() - (pendingSince.current ?? Date.now()) < 5 * 60 * 1000) refetch();
+    }, 4000);
     return () => clearInterval(id);
   }, [resumes, refetch]);
 
