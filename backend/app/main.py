@@ -20,6 +20,7 @@ from app.api.collections import router as collections_router
 from app.api.document_management import router as document_management_router
 from app.api.documents import router as documents_router
 from app.api.health import router as health_router
+from app.api.projects import router as projects_router
 from app.api.query import router as query_router
 from app.config import get_settings
 from app.db import models  # noqa: F401 — registers Phase 2 tables with Base.metadata
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(documents_router)         # Phase 2 — POST /upload
     app.include_router(document_management_router)  # Phase 3 — GET/DELETE /documents
     app.include_router(collections_router)       # Phase 3 — /collections CRUD
+    app.include_router(projects_router)          # POST /projects/github, /projects/zip
     app.include_router(query_router)             # Phase 4 — POST /query SSE
 
     return app

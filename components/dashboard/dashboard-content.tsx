@@ -5,6 +5,7 @@ import { QuickActions } from "@/components/dashboard/quick-actions";
 import { RecentDocuments } from "@/components/dashboard/recent-documents";
 import { UploadCard } from "@/components/dashboard/upload-card";
 import { HealthStatus } from "@/components/dashboard/health-status";
+import { ProjectImportCard } from "@/components/dashboard/project-import-card";
 import { useDocuments } from "@/lib/hooks/use-documents";
 
 export function DashboardContent() {
@@ -20,11 +21,12 @@ export function DashboardContent() {
       <HealthStatus />
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
+        <div className="space-y-6 lg:col-span-3">
           <UploadCard
             disabled={false}
             onUploadComplete={refetch}
           />
+          <ProjectImportCard onImportStarted={refetch} />
         </div>
         <div className="lg:col-span-2">
           <QuickActions />

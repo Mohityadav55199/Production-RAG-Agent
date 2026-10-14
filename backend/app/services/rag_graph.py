@@ -63,6 +63,8 @@ CRITICAL RULES — violating any of these is an error:
    unless the user explicitly asks for it.
 
 6. CITE SOURCES inline: (filename.pdf, p. N) when using retrieved text.
+   For source code, cite the file path instead, e.g. (my-repo/src/main.py),
+   and show relevant code in fenced code blocks when explaining it.
 
 7. If the retrieved context does not answer the question, say so clearly.
    Do not guess.

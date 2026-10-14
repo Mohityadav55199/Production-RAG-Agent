@@ -136,6 +136,7 @@ class Settings(BaseSettings):
     # ── Upload limits ──────────────────────────────────────────────────────────
     MAX_UPLOAD_SIZE_MB: int = 50            # per-file size limit
     MAX_FILES_PER_UPLOAD: int = 10
+    GITHUB_TOKEN: str | None = None        # optional: private repos + higher GitHub rate limit
 
     # ── PDF Chunking ────────────────────────────────────────────────────────────
     MIN_CHUNK_SIZE: int = 500              # target minimum chars per chunk

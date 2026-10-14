@@ -8,6 +8,7 @@ from app.services.parsers.csv_parser import CsvParser
 from app.services.parsers.txt_parser import TxtParser
 from app.services.parsers.markdown_parser import MarkdownParser
 from app.services.parsers.image_parser import ImageParser
+from app.services.parsers.code_parser import CodeParser
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -22,19 +23,25 @@ _parsers = {
     "txt": TxtParser(),
     "markdown": MarkdownParser(),
     "image": ImageParser(),
+    "code": CodeParser(),
 }
 
 def get_parser_for_file(filename: str, mime_type: str = "") -> DocumentParser:
     """
     Returns the appropriate DocumentParser based on filename and mime_type.
     """
-    ext = filename.lower().split('.')[-1] if '.' in filename else ""
+    from app.services.project_import import CODE_EXTENSIONS, SPECIAL_FILENAMES
+
+    basename = filename.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    ext = basename.split('.')[-1] if '.' in basename else ""
     
     if not mime_type:
         mime_type = mimetypes.guess_type(filename)[0] or ""
 
     # 1. Check by extension first
-    if ext == "pdf":
+    if ext in CODE_EXTENSIONS or basename in SPECIAL_FILENAMES:
+        return _parsers["code"]
+    elif ext == "pdf":
         return _parsers["pdf"]
     elif ext == "docx":
         return _parsers["docx"]
