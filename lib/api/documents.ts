@@ -2,11 +2,16 @@ import { apiFetch } from "@/lib/api/client";
 import { normalizeDocumentsPayload } from "@/lib/api/normalize";
 import type { DashboardStats, Document } from "@/lib/types";
 
-export async function getDocuments(collectionId?: string | null): Promise<{
+export async function getDocuments(
+  collectionId?: string | null,
+  kind?: "documents" | "projects"
+): Promise<{
   documents: Document[];
   stats: DashboardStats;
 }> {
   const params = new URLSearchParams();
+  params.set("limit", "100");
+  if (kind) params.set("kind", kind);
   if (collectionId) params.set("collection_id", collectionId);
   const query = params.toString();
   const raw = await apiFetch<unknown>(

@@ -54,22 +54,6 @@ export interface ChatMessage {
   error?: string;
 }
 
-export const quickActions = [
-  {
-    id: "chat",
-    label: "Ask your documents",
-    description: "Chat with the AI and get answers with page citations.",
-    icon: "message" as const,
-    href: "/chat",
-  },
-  {
-    id: "documents",
-    label: "Manage documents",
-    description: "View, re-index or delete the files you uploaded.",
-    icon: "settings" as const,
-    href: "/collections",
-  },
-] as const;
 
 export const suggestedQuestions = [
   "What documents are in my knowledge base?",

@@ -20,6 +20,7 @@ export interface StreamQueryOptions extends StreamHandlers {
   answerStyle?: AnswerStyle;
   project?: string | null;
   documentId?: string | null;
+  scopeKind?: "all" | "documents" | "projects";
   signal?: AbortSignal;
 }
 
@@ -156,6 +157,7 @@ export async function streamQuery(options: StreamQueryOptions): Promise<void> {
       conversation_id: options.conversationId ?? undefined,
       answer_style: options.answerStyle ?? "detailed",
       top_k: detailed ? 12 : 5,
+      scope_kind: options.scopeKind ?? "all",
       project: options.project ?? undefined,
       document_id: options.documentId ?? undefined,
       stream: true,

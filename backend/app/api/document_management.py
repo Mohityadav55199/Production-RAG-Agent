@@ -7,7 +7,7 @@ New endpoints added without touching Phase 2 code:
 """
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Query, status
 
@@ -48,8 +48,12 @@ async def list_documents_endpoint(
         DocumentStatus | None,
         Query(description="Filter by document status."),
     ] = None,
+    kind: Annotated[
+        Literal["documents", "projects"] | None,
+        Query(description="'documents' = standalone uploads, 'projects' = imported code files."),
+    ] = None,
 ) -> DocumentListResponse:
-    return await list_documents(page=page, limit=limit, status=status)
+    return await list_documents(page=page, limit=limit, status=status, kind=kind)
 
 
 # ── DELETE /documents/{id} ────────────────────────────────────────────────────

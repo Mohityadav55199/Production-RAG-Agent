@@ -76,6 +76,7 @@ async def _generate_sse(
     answer_style: str = "detailed",
     project: str | None = None,
     document_id: str | None = None,
+    scope_kind: str = "all",
 ) -> AsyncGenerator[str, None]:
     """
     Async generator that drives the entire RAG pipeline and yields raw SSE
@@ -116,6 +117,7 @@ async def _generate_sse(
             answer_style=answer_style,
             project=project,
             document_id=document_id,
+            scope_kind=scope_kind,
         ):
             # Check for client disconnect on each event to stop early
             if await request.is_disconnected():
@@ -185,6 +187,7 @@ async def query_endpoint(
             answer_style=body.answer_style,
             project=body.project,
             document_id=str(body.document_id) if body.document_id else None,
+            scope_kind=body.scope_kind,
         ),
         media_type="text/event-stream",
         headers={

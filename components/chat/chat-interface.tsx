@@ -36,7 +36,13 @@ function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function ChatInterface() {
+interface ChatInterfaceProps {
+  /** "documents" = uploaded files only, "projects" = imported code projects only. */
+  mode: "documents" | "projects";
+}
+
+export function ChatInterface({ mode }: ChatInterfaceProps) {
+  const codeMode = mode === "projects";
   const { activeCollectionId } = useApp();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -50,8 +56,7 @@ export function ChatInterface() {
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const isProjectScope = scope.startsWith("project:");
-  const starterQuestions = isProjectScope
+  const starterQuestions = codeMode
     ? [
         "Explain this project: what it does, its architecture and main components.",
         "Walk me through the folder structure and what each part is responsible for.",
@@ -119,6 +124,7 @@ export function ChatInterface() {
           collectionId: activeCollectionId,
           conversationId,
           answerStyle,
+          scopeKind: mode,
           project,
           documentId,
           signal: abortRef.current.signal,
@@ -180,7 +186,7 @@ export function ChatInterface() {
         abortRef.current = null;
       }
     },
-    [activeCollectionId, isStreaming, scope, answerStyle, conversationId]
+    [activeCollectionId, isStreaming, scope, answerStyle, conversationId, mode]
   );
 
   const stopGeneration = () => {
@@ -199,9 +205,11 @@ export function ChatInterface() {
         <CardHeader className="space-y-3 border-b border-border/60 pb-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <CardTitle>Ask</CardTitle>
+              <CardTitle>{codeMode ? "Study your code" : "Ask your documents"}</CardTitle>
               <CardDescription>
-                Ask anything about your documents and code projects. Follow-up questions remember the conversation.
+                {codeMode
+                  ? "Ask anything about an imported repo: architecture, files, flow, bugs. Follow-ups remember the conversation."
+                  : "Ask anything about your uploaded documents. Follow-ups remember the conversation."}
               </CardDescription>
             </div>
             <Button
@@ -216,12 +224,16 @@ export function ChatInterface() {
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
-              <span className="shrink-0 text-muted-foreground">Ask about</span>
+              <span className="shrink-0 text-muted-foreground">
+                {codeMode ? "Project" : "Document"}
+              </span>
               <SourceSelect
                 value={scope}
                 onChange={setScope}
                 sources={knowledgeSources}
                 includeAll
+                allLabel={codeMode ? "All imported projects" : "All my documents"}
+                kind={mode}
                 disabled={isStreaming}
                 className="flex-1"
               />
@@ -255,9 +267,9 @@ export function ChatInterface() {
                 <div>
                   <p className="font-medium">Start a conversation</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {isProjectScope
+                    {codeMode
                       ? "Try one of these to study the project in depth"
-                      : "Ask anything about your knowledge base"}
+                      : "Ask anything about your uploaded documents"}
                   </p>
                 </div>
                 <div className="flex max-w-2xl flex-wrap justify-center gap-2">
@@ -401,9 +413,9 @@ export function ChatInterface() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={
-                  isProjectScope
-                    ? "Ask about this project's code, architecture, files…"
-                    : "Ask a question about your documents or code…"
+                  codeMode
+                    ? "Ask about the code, architecture, files…"
+                    : "Ask a question about your documents…"
                 }
                 className="min-h-[44px] resize-none"
                 rows={1}

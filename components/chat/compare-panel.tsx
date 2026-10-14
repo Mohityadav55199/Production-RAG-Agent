@@ -30,6 +30,13 @@ interface SideState {
   sourceKey: string;
 }
 
+const FOCUS_PRESETS = [
+  "Time and space complexity",
+  "Correctness and edge cases",
+  "Readability and style",
+  "Which is better and why?",
+];
+
 const emptySide = (label: string): SideState => ({ mode: "text", text: "", label, sourceKey: "" });
 
 function toRequestSide(side: SideState, name: string): CompareSide {
@@ -120,10 +127,10 @@ export function ComparePanel() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Compare</CardTitle>
+          <CardTitle>Compare code</CardTitle>
           <CardDescription>
-            Compare two pieces of code or text, two imported repos, or two documents, in any combination.
-            You get a line diff for pasted text and a detailed AI comparison.
+            Paste two solutions (C++, Java, Python, DSA…), or pick imported repos or documents. You get a
+            line diff for pasted code plus a detailed AI comparison, including time and space complexity.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -147,12 +154,35 @@ export function ComparePanel() {
           {!hasSources && (
             <p className="text-xs text-muted-foreground">
               To compare repos or documents, first import them on the{" "}
-              <Link href="/dashboard" className="underline underline-offset-2">
-                dashboard
-              </Link>
-              .
+              <Link href="/github" className="underline underline-offset-2">
+                GitHub
+              </Link>{" "}
+              or{" "}
+              <Link href="/rag" className="underline underline-offset-2">
+                RAG Agent
+              </Link>{" "}
+              page.
             </p>
           )}
+
+          <div className="flex flex-wrap gap-1.5">
+            {FOCUS_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                disabled={running}
+                onClick={() => setFocus(preset)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs transition-colors",
+                  focus === preset
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                )}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
@@ -293,7 +323,7 @@ function SideEditor({ name, side, onChange, sources, disabled }: SideEditorProps
           <Input
             value={side.label}
             onChange={(e) => onChange({ ...side, label: e.target.value })}
-            placeholder={`Name for side ${name} (e.g. old_version.py)`}
+            placeholder={`Name for side ${name} (e.g. solution_a.cpp)`}
             disabled={disabled}
             className="h-8 text-xs"
           />

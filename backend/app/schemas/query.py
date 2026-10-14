@@ -44,6 +44,10 @@ class QueryRequest(BaseModel):
         "detailed",
         description="'detailed' gives thorough, structured explanations; 'concise' gives short answers.",
     )
+    scope_kind: Literal["all", "documents", "projects"] = Field(
+        "all",
+        description="When no project/document is chosen: search everything, only uploaded documents, or only code projects.",
+    )
     project: str | None = Field(
         None,
         max_length=200,

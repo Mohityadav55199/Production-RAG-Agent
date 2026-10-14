@@ -5,7 +5,10 @@ import { getDocuments } from "@/lib/api/documents";
 import { useApp } from "@/lib/context/app-context";
 import type { DashboardStats, Document } from "@/lib/types";
 
-export function useDocuments(options?: { pollProcessing?: boolean }) {
+export function useDocuments(options?: {
+  pollProcessing?: boolean;
+  kind?: "documents" | "projects";
+}) {
   const { refreshKey, activeCollectionId } = useApp();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
@@ -20,7 +23,7 @@ export function useDocuments(options?: { pollProcessing?: boolean }) {
   const refetch = useCallback(async () => {
     setError(null);
     try {
-      const data = await getDocuments(activeCollectionId);
+      const data = await getDocuments(activeCollectionId, options?.kind);
       setDocuments(data.documents);
       setStats(data.stats);
     } catch (err) {
@@ -28,7 +31,7 @@ export function useDocuments(options?: { pollProcessing?: boolean }) {
     } finally {
       setLoading(false);
     }
-  }, [activeCollectionId]);
+  }, [activeCollectionId, options?.kind]);
 
   useEffect(() => {
     setLoading(true);

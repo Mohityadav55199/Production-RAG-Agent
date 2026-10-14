@@ -32,6 +32,9 @@ interface SourceSelectProps {
   onChange: (value: string) => void;
   sources: KnowledgeSources;
   includeAll?: boolean;
+  allLabel?: string;
+  /** Limit the list to code projects, uploaded documents, or both (default). */
+  kind?: "documents" | "projects" | "both";
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -43,6 +46,8 @@ export function SourceSelect({
   onChange,
   sources,
   includeAll = false,
+  allLabel = "All documents & projects",
+  kind = "both",
   placeholder = "Choose a project or document…",
   disabled,
   className,
@@ -58,13 +63,13 @@ export function SourceSelect({
       )}
     >
       {includeAll ? (
-        <option value="all">All documents &amp; projects</option>
+        <option value="all">{allLabel}</option>
       ) : (
         <option value="" disabled>
           {placeholder}
         </option>
       )}
-      {sources.projects.length > 0 && (
+      {kind !== "documents" && sources.projects.length > 0 && (
         <optgroup label="Code projects">
           {sources.projects.map((p) => (
             <option key={p.name} value={`project:${p.name}`}>
@@ -73,7 +78,7 @@ export function SourceSelect({
           ))}
         </optgroup>
       )}
-      {sources.documents.length > 0 && (
+      {kind !== "projects" && sources.documents.length > 0 && (
         <optgroup label="Documents">
           {sources.documents.map((d) => (
             <option key={d.id} value={`document:${d.id}`}>

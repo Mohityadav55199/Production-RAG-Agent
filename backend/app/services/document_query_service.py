@@ -32,6 +32,7 @@ async def list_documents(
     page: int = 1,
     limit: int = 20,
     status: DocumentStatus | None = None,
+    kind: str | None = None,
 ) -> DocumentListResponse:
     """
     Return a paginated list of all Document rows, optionally filtered by status.
@@ -40,6 +41,8 @@ async def list_documents(
         page:   1-indexed page number.
         limit:  Rows per page (1–100).
         status: Optional filter on DocumentStatus.
+        kind:   "documents" (standalone uploads) or "projects" (imported code
+                files, whose filenames contain a "/" path).
 
     Returns:
         DocumentListResponse with documents and pagination metadata.
@@ -54,6 +57,12 @@ async def list_documents(
         if status is not None:
             base_q = base_q.where(Document.status == status)
             count_q = count_q.where(Document.status == status)
+
+        if kind in ("documents", "projects"):
+            cond = Document.filename.like("%/%")
+            cond = cond if kind == "projects" else ~cond
+            base_q = base_q.where(cond)
+            count_q = count_q.where(cond)
 
         # ── Total count ───────────────────────────────────────────────────────
         total: int = (await session.execute(count_q)).scalar_one()

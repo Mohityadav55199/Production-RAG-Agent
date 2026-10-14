@@ -25,7 +25,11 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-async def resolve_scope(project: str | None = None, document_id: str | None = None) -> ResolvedScope:
+async def resolve_scope(
+    project: str | None = None,
+    document_id: str | None = None,
+    kind: str = "all",
+) -> ResolvedScope:
     if document_id:
         async with get_db_session() as session:
             doc = await session.get(Document, uuid.UUID(document_id))
@@ -49,6 +53,16 @@ async def resolve_scope(project: str | None = None, document_id: str | None = No
             document_ids=[str(r.id) for r in rows],
             overview_document_id=overview,
         )
+
+    if kind in ("documents", "projects"):
+        cond = Document.filename.like("%/%")
+        cond = cond if kind == "projects" else ~cond
+        async with get_db_session() as session:
+            ids = (await session.execute(
+                select(Document.id).where(cond, Document.status == DocumentStatus.COMPLETED)
+            )).scalars().all()
+        label = "all imported code projects" if kind == "projects" else "all uploaded documents"
+        return ResolvedScope(label=label, document_ids=[str(i) for i in ids])
 
     return ResolvedScope(label="the whole knowledge base", document_ids=None)
 

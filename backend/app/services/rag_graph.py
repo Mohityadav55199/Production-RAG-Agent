@@ -122,6 +122,7 @@ class RAGState(TypedDict):
     answer_style: str              # "detailed" | "concise"
     project: str | None            # restrict to one imported code project
     document_id: str | None        # or to a single document
+    scope_kind: str                # "all" | "documents" | "projects"
     scope_label: str
 
 
@@ -177,7 +178,11 @@ async def _retrieve_node(state: RAGState) -> dict:
         chunks  — list[RetrievedChunk] for the generate node
         sources — serialisable list[dict] emitted in the SSE sources event
     """
-    scope = await resolve_scope(project=state.get("project"), document_id=state.get("document_id"))
+    scope = await resolve_scope(
+        project=state.get("project"),
+        document_id=state.get("document_id"),
+        kind=state.get("scope_kind") or "all",
+    )
     style = state.get("answer_style") or "detailed"
 
     chunks = await retrieve_chunks(
@@ -328,6 +333,7 @@ async def stream_rag(
     answer_style: str = "detailed",
     project: str | None = None,
     document_id: str | None = None,
+    scope_kind: str = "all",
 ) -> AsyncGenerator[dict, None]:
     """
     Execute the RAG graph and yield typed event dicts for the SSE layer.
@@ -349,6 +355,8 @@ async def stream_rag(
         answer_style:      "detailed" (default) or "concise".
         project:           Optional imported project name to restrict retrieval to.
         document_id:       Optional single document to restrict retrieval to.
+        scope_kind:        "documents" / "projects" to search only that kind when
+                           neither project nor document_id is given.
     """
     graph = get_rag_graph()
 
@@ -365,6 +373,7 @@ async def stream_rag(
         "answer_style": answer_style,
         "project": project,
         "document_id": document_id,
+        "scope_kind": scope_kind,
         "scope_label": "",
     }
 

@@ -62,6 +62,13 @@ approach/architecture, technologies, features, complexity, quality).
 Explain each point concretely, citing file paths or quoting short code
 excerpts in fenced code blocks.
 
+## Algorithms and complexity
+Only when either side contains algorithmic code (e.g. C++/Java/Python DSA
+solutions): state each approach's algorithm/data structure, its time and
+space complexity (Big-O, with reasoning), correctness concerns and edge
+cases (empty input, duplicates, overflow, large n), and which one is faster
+or safer in practice.
+
 ## Strengths and weaknesses
 For each of A and B. For code also consider correctness/bugs, readability,
 performance, security and maintainability.
