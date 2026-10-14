@@ -2,14 +2,13 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { ArrowLeftRight, Check, Copy, FileCode2, Library, Loader2, Square } from "lucide-react";
 import { toast } from "sonner";
 import { parseSourceKey, streamCompare, type CompareSide } from "@/lib/api/sources";
 import type { QuerySource } from "@/lib/types";
 import { SourceSelect, useKnowledgeSources } from "@/components/chat/source-select";
 import { Button } from "@/components/ui/button";
+import { SafeMarkdown } from "@/components/ui/safe-markdown";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -252,7 +251,7 @@ export function ComparePanel() {
 
             {result && (
               <div className="prose prose-sm dark:prose-invert max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{result}</ReactMarkdown>
+                <SafeMarkdown>{result}</SafeMarkdown>
               </div>
             )}
 

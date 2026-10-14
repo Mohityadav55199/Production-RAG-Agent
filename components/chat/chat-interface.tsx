@@ -1,8 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   AlertCircle,
   Bot,
@@ -22,6 +20,7 @@ import { SourceSelect, useKnowledgeSources } from "@/components/chat/source-sele
 import { useApp } from "@/lib/context/app-context";
 import { suggestedQuestions, type ChatMessage } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import { SafeMarkdown } from "@/components/ui/safe-markdown";
 import {
   Card,
   CardContent,
@@ -312,10 +311,10 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                     >
                       {message.role === "assistant" ? (
                         <div className="prose prose-sm dark:prose-invert max-w-none relative group">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          <SafeMarkdown>
                             {message.content ||
                               (message.isStreaming ? "▍" : "")}
-                          </ReactMarkdown>
+                          </SafeMarkdown>
                           {message.isStreaming && (
                             <span className="ml-0.5 inline-block animate-pulse">
                               ▍
