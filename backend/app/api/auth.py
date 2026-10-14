@@ -43,6 +43,7 @@ from app.services.auth import (
     validate_password,
     verify_password_async,
 )
+from app.utils.client_ip import client_ip
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -107,15 +108,6 @@ def _enforce(limiter: SlidingWindowLimiter, key: str, what: str) -> None:
         )
 
 
-def _client_ip(request: Request) -> str:
-    """Best-effort client address behind a trusted reverse proxy (see TRUSTED_PROXY_HOPS)."""
-    forwarded = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
-    hops = max(1, get_settings().TRUSTED_PROXY_HOPS)
-    if forwarded:
-        return forwarded[-hops] if len(forwarded) >= hops else forwarded[0]
-    return request.client.host if request.client else "unknown"
-
-
 class Credentials(BaseModel):
     email: str = Field(..., max_length=254)
     password: str = Field(..., max_length=200)
@@ -147,7 +139,7 @@ def _response(user: User) -> AuthResponse:
 async def signup(body: Credentials, request: Request) -> AuthResponse:
     if not get_settings().ALLOW_SIGNUP:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Registration is closed.")
-    ip = _client_ip(request)
+    ip = client_ip(request)
     _enforce(_signup_by_ip, ip, "sign-up attempts from this network")
     _signup_by_ip.hit(ip)
 
@@ -176,7 +168,7 @@ async def signup(body: Credentials, request: Request) -> AuthResponse:
 @router.post("/login", response_model=AuthResponse)
 async def login(body: Credentials, request: Request) -> AuthResponse:
     email = body.email.strip().lower()
-    ip = _client_ip(request)
+    ip = client_ip(request)
     ip_email_key = f"{ip}|{email}"
     _enforce(_login_by_ip, ip, "failed attempts from this network")
 

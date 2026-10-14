@@ -143,6 +143,9 @@ class Settings(BaseSettings):
     # taken from the Nth entry from the END of X-Forwarded-For, which only trusted proxies write; entries
     # further left are supplied by the client and can be forged. Raise it if logs show every user sharing one IP.
     TRUSTED_PROXY_HOPS: int = 1
+    # Optional: read the client address from this header instead (e.g. "cf-connecting-ip", which Cloudflare
+    # always overwrites). Only set it if your proxy really sets it; verify with the admin network check.
+    CLIENT_IP_HEADER: str = ""
     # The administrator account. Set BOTH: the account is created (or its password reset) at startup and is the
     # only admin. Registering this address through the sign-up form never grants admin rights.
     ADMIN_EMAIL: str = ""

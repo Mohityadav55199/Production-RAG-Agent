@@ -16,6 +16,7 @@ from typing import AsyncGenerator
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.collections import router as collections_router
 from app.api.compare import router as compare_router
@@ -145,6 +146,8 @@ def create_app() -> FastAPI:
     app.include_router(resume_router, dependencies=protected)                # /resume/*
     app.include_router(compare_router, dependencies=protected)               # POST /compare (SSE)
     app.include_router(query_router, dependencies=protected)                 # POST /query (SSE)
+    # Administrator tools: network check, and the Qdrant collection API (it acts on the shared index)
+    app.include_router(admin_router, dependencies=[Depends(require_admin)])
     # The Qdrant collection admin API acts on the shared index, so it is admin-only
     app.include_router(collections_router, dependencies=[Depends(require_admin)])
 
