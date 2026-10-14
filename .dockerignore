@@ -1,0 +1,12 @@
+node_modules/
+.next/
+backend/
+.git/
+.gitignore
+.env*.local
+*.log
+screenshots/
+README.md
+LICENSE
+render.yaml
+vercel.json

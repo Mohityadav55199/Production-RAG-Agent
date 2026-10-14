@@ -37,6 +37,7 @@ export interface QuerySource {
 export interface HealthInfo {
   status: string;
   gemini: string;
+  groq?: string;
   qdrant: string;
   postgres: string;
   backend: string;

@@ -147,15 +147,25 @@ QDRANT_API_KEY=your_qdrant_api_key
 QDRANT_COLLECTION=documents
 ```
 
-### 3. Run with Docker Compose (Recommended)
+### 3. Run Entire Stack with Docker Compose (Recommended)
+
+Start the entire system (**Next.js Frontend + FastAPI Backend + Qdrant Vector DB + PostgreSQL**) with a single command from the project root:
 
 ```bash
-cd backend
 docker compose up --build
 ```
 
-### 4. Or Run Backend Manually
+- **Frontend Web UI**: `http://localhost:3000`
+- **FastAPI Backend API**: `http://localhost:8000`
+- **Swagger Documentation**: `http://localhost:8000/docs`
+- **Qdrant Vector Database**: `http://localhost:6333`
+- **PostgreSQL**: `localhost:5432`
 
+---
+
+### 4. Or Run Services Manually (Without Docker)
+
+#### Run Backend:
 ```bash
 cd backend
 python -m venv .venv
@@ -169,17 +179,12 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 5. Run Frontend
-
+#### Run Frontend:
 ```bash
 # In the project root directory
 npm install
 npm run dev
 ```
-
-- **Frontend UI**: `http://localhost:3000`
-- **Backend API**: `http://localhost:8000`
-- **Swagger Documentation**: `http://localhost:8000/docs`
 
 ---
 

@@ -14,6 +14,7 @@ class HealthResponse(BaseModel):
     gemini: ServiceStatus
     postgres: ServiceStatus
     qdrant: ServiceStatus
+    groq: ServiceStatus | None = None
 
     model_config = {"json_schema_extra": {
         "example": {

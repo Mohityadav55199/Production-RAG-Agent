@@ -19,12 +19,20 @@ def get_qdrant_client() -> AsyncQdrantClient:
     global _qdrant_client
     if _qdrant_client is None:
         settings = get_settings()
-        _qdrant_client = AsyncQdrantClient(
-            url=settings.qdrant_url,
-            api_key=settings.QDRANT_API_KEY,
-            timeout=10,
-        )
-        logger.info("Qdrant client created — url=%s", settings.qdrant_url)
+        if settings.QDRANT_URL:
+            _qdrant_client = AsyncQdrantClient(
+                url=settings.qdrant_url,
+                api_key=settings.QDRANT_API_KEY,
+                timeout=10,
+            )
+            logger.info("Qdrant client created — remote url=%s", settings.qdrant_url)
+        else:
+            # Embedded local storage (runs locally without Docker)
+            _qdrant_client = AsyncQdrantClient(
+                path="./qdrant_data",
+                timeout=10,
+            )
+            logger.info("Qdrant client created — local embedded storage (./qdrant_data)")
     return _qdrant_client
 
 

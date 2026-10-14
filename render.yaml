@@ -12,10 +12,20 @@ services:
         value: production
       - key: LOG_LEVEL
         value: INFO
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PRIMARY_LLM_PROVIDER
+        value: groq
+      - key: PRIMARY_LLM_MODEL
+        value: llama-3.3-70b-versatile
+      - key: ENABLE_LLM_FALLBACK
+        value: "true"
+      - key: FALLBACK_LLM_PROVIDER
+        value: groq
+      - key: FALLBACK_LLM_MODELS
+        value: llama-3.1-8b-instant, mixtral-8x7b-32768, gemma2-9b-it
       - key: GOOGLE_API_KEY
         sync: false
-      - key: GEMINI_MODEL
-        value: gemini-2.5-flash
       - key: GEMINI_EMBEDDING_MODEL
         value: models/gemini-embedding-001
       - key: EMBEDDING_DIMENSION

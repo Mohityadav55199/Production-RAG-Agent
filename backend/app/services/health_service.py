@@ -43,6 +43,21 @@ async def _check_gemini(settings) -> ServiceStatus:
         return "not_connected"
 
 
+async def _check_groq(settings) -> ServiceStatus | None:
+    """Verify connectivity to Groq API if key is configured."""
+    if not getattr(settings, "GROQ_API_KEY", None):
+        return None
+    try:
+        from groq import AsyncGroq
+        client = AsyncGroq(api_key=settings.GROQ_API_KEY, timeout=5.0)
+        await asyncio.wait_for(client.models.list(), timeout=5)
+        logger.debug("Groq check OK")
+        return "connected"
+    except Exception as exc:
+        logger.warning("Groq check failed: %s", exc)
+        return "not_connected"
+
+
 async def _check_postgres(settings) -> ServiceStatus:
     """Open a raw asyncpg connection and execute SELECT 1."""
     try:
@@ -121,24 +136,23 @@ async def get_health() -> HealthResponse:
     """
     settings = get_settings()
 
-    gemini_status, postgres_status, qdrant_status = await asyncio.gather(
+    gemini_status, groq_status, postgres_status, qdrant_status = await asyncio.gather(
         _check_gemini(settings),
+        _check_groq(settings),
         _check_postgres(settings),
         _check_qdrant(),
     )
 
-    overall = (
-        "ok"
-        if all(
-            s == "connected"
-            for s in (gemini_status, postgres_status, qdrant_status)
-        )
-        else "degraded"
-    )
+    core_statuses = [gemini_status, postgres_status, qdrant_status]
+    if groq_status is not None:
+        core_statuses.append(groq_status)
+
+    overall = "ok" if all(s == "connected" for s in core_statuses) else "degraded"
 
     return HealthResponse(
         status=overall,
         gemini=gemini_status,
         postgres=postgres_status,
         qdrant=qdrant_status,
+        groq=groq_status,
     )

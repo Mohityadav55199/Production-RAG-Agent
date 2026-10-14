@@ -71,6 +71,8 @@ async def _generate_sse(
     query: str,
     conversation_id: uuid.UUID | None,
     top_k: int,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Async generator that drives the entire RAG pipeline and yields raw SSE
@@ -106,6 +108,8 @@ async def _generate_sse(
             conversation_id=str(conv_id),
             history_messages=history,
             top_k=top_k,
+            provider=provider,
+            model=model,
         ):
             # Check for client disconnect on each event to stop early
             if await request.is_disconnected():
@@ -167,6 +171,8 @@ async def query_endpoint(
             query=body.query,
             conversation_id=body.conversation_id,
             top_k=body.top_k,
+            provider=body.provider,
+            model=body.model,
         ),
         media_type="text/event-stream",
         headers={

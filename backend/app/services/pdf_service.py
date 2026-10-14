@@ -7,7 +7,7 @@ chunking can map each chunk back to its originating page number.
 
 from dataclasses import dataclass, field
 
-import fitz  # PyMuPDF
+import pymupdf as fitz
 
 from app.utils.logging import get_logger
 

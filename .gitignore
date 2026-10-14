@@ -44,3 +44,5 @@ backend/venv/
 backend/.venv/
 backend/*.egg-info/
 backend/alembic/versions/__pycache__/
+qdrant_data/
+backend/qdrant_data/

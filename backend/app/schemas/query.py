@@ -32,6 +32,14 @@ class QueryRequest(BaseModel):
         le=20,
         description="Number of document chunks to retrieve from the vector store.",
     )
+    provider: str | None = Field(
+        None,
+        description="Optional LLM provider override ('groq', 'gemini').",
+    )
+    model: str | None = Field(
+        None,
+        description="Optional LLM model override (e.g., 'llama-3.3-70b-versatile', 'gemini-2.5-flash').",
+    )
 
     model_config = {
         "json_schema_extra": {

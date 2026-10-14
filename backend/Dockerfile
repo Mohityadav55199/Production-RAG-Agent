@@ -48,7 +48,8 @@ COPY alembic/ ./alembic/
 COPY alembic.ini .
 
 # Non-root user for security
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
+    && mkdir -p /app/qdrant_data && chown -R appuser:appgroup /app
 USER appuser
 
 EXPOSE 8000

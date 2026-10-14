@@ -11,7 +11,8 @@ export function HealthStatus() {
 
   const services = [
     { name: "Backend API", key: "backend", value: health?.backend },
-    { name: "Google Gemini", key: "gemini", value: health?.gemini },
+    ...(health?.groq ? [{ name: "Groq LLM", key: "groq", value: health?.groq }] : []),
+    { name: "Google Embeddings", key: "gemini", value: health?.gemini },
     { name: "PostgreSQL", key: "postgres", value: health?.postgres },
     { name: "Qdrant Vector DB", key: "qdrant", value: health?.qdrant },
   ];

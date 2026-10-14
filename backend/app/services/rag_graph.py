@@ -85,19 +85,19 @@ class RAGState(TypedDict):
     chunks: list[RetrievedChunk]
     sources: list[dict]            # serialisable dicts ready for SSE
     answer: str
+    provider: str | None
+    model: str | None
 
 
 # ── LLM factory ──────────────────────────────────────────────────────────────
 
-def _build_llm(settings) -> ChatGoogleGenerativeAI:
-    """Return a streaming-capable Gemini chat model."""
-    return ChatGoogleGenerativeAI(
-        model=settings.GEMINI_MODEL,
-        google_api_key=settings.GOOGLE_API_KEY,
-        temperature=0.1,          # low temperature for factual RAG
-        streaming=True,           # enables on_chat_model_stream events
-        convert_system_message_to_human=False,
-    )
+def _build_llm(state: RAGState | None = None):
+    """Return a streaming-capable chat model with fallback mechanism."""
+    from app.services.llm_factory import get_configured_llm
+
+    prov = state.get("provider") if state else None
+    mod = state.get("model") if state else None
+    return get_configured_llm(requested_provider=prov, requested_model=mod)
 
 
 # ── Graph nodes ───────────────────────────────────────────────────────────────
@@ -143,8 +143,7 @@ async def _generate_node(state: RAGState) -> dict:
     Produces:
         answer — the complete assistant response text
     """
-    settings = get_settings()
-    llm = _build_llm(settings)
+    llm = _build_llm(state)
 
     # Build context block from retrieved chunks
     if state["chunks"]:
@@ -252,6 +251,8 @@ async def stream_rag(
     conversation_id: str,
     history_messages: list[BaseMessage],
     top_k: int,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """
     Execute the RAG graph and yield typed event dicts for the SSE layer.
@@ -268,6 +269,8 @@ async def stream_rag(
         conversation_id:   String UUID of the active conversation.
         history_messages:  Previous turns as LangChain messages.
         top_k:             Chunks to retrieve.
+        provider:          Optional LLM provider override ("groq", "gemini").
+        model:             Optional model override.
     """
     graph = get_rag_graph()
 
@@ -279,6 +282,8 @@ async def stream_rag(
         "chunks": [],
         "sources": [],
         "answer": "",
+        "provider": provider,
+        "model": model,
     }
 
     sources_emitted = False

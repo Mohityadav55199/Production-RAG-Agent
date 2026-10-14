@@ -22,7 +22,23 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
-    # ── Google Gemini ──────────────────────────────────────────────────────────
+    # ── LLM Configuration (Configurable, No hardcoding) ────────────────────────
+    PRIMARY_LLM_PROVIDER: str = "groq"       # "groq" | "gemini" | "auto"
+    PRIMARY_LLM_MODEL: str = "llama-3.3-70b-versatile"
+    LLM_TEMPERATURE: float = 0.1
+    LLM_PROVIDER: str = "auto"
+
+    # ── Fallback LLM Configuration ─────────────────────────────────────────────
+    ENABLE_LLM_FALLBACK: bool = True
+    FALLBACK_LLM_PROVIDER: str = "groq"       # default fallback provider: "groq" | "gemini"
+    FALLBACK_LLM_MODELS: str = "llama-3.1-8b-instant, mixtral-8x7b-32768, gemma2-9b-it"  # comma-separated chain of fallbacks
+    FALLBACK_LLM_MODEL: str = "llama-3.1-8b-instant"
+    FALLBACK_LLM_TEMPERATURE: float = 0.1
+
+    # ── Provider Specific Keys & Models ────────────────────────────────────────
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
     GOOGLE_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
     GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"

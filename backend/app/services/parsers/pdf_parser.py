@@ -1,4 +1,4 @@
-import fitz  # PyMuPDF
+import pymupdf as fitz
 from PIL import Image
 import io
 from app.services.parsers.base import DocumentParser, ExtractionResult, ExtractedPage
