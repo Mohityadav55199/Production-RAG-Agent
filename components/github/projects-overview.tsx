@@ -1,10 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { AlertCircle, CheckCircle2, FolderGit2, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { deleteDocument } from "@/lib/api/documents";
+import { deleteProject, type ProjectProgress } from "@/lib/api/projects";
 import { useApp } from "@/lib/context/app-context";
-import type { Document } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,47 +16,30 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 
-interface ProjectSummary {
-  name: string;
-  docs: Document[];
-  indexed: number;
-  processing: number;
-  failed: number;
-}
-
-function groupByProject(documents: Document[]): ProjectSummary[] {
-  const map = new Map<string, ProjectSummary>();
-  for (const doc of documents) {
-    const name = doc.name.split("/")[0];
-    const entry = map.get(name) ?? { name, docs: [], indexed: 0, processing: 0, failed: 0 };
-    entry.docs.push(doc);
-    if (doc.status === "failed") entry.failed++;
-    else if (doc.status === "processing") entry.processing++;
-    else entry.indexed++;
-    map.set(name, entry);
-  }
-  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-}
-
 interface ProjectsOverviewProps {
-  documents: Document[];
+  projects: ProjectProgress[];
   loading: boolean;
   error: string | null;
   onChanged: () => void;
 }
 
-export function ProjectsOverview({ documents, loading, error, onChanged }: ProjectsOverviewProps) {
+export function ProjectsOverview({ projects, loading, error, onChanged }: ProjectsOverviewProps) {
   const { refresh } = useApp();
-  const projects = groupByProject(documents);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
-  const removeProject = async (project: ProjectSummary) => {
-    if (!window.confirm(`Delete project "${project.name}" and all ${project.docs.length} indexed files?`)) return;
-    const results = await Promise.allSettled(project.docs.map((d) => deleteDocument(d.id)));
-    const failed = results.filter((r) => r.status === "rejected").length;
-    if (failed) toast.error(`${failed} files could not be deleted. Try again.`);
-    else toast.success(`Deleted "${project.name}"`);
-    refresh();
-    onChanged();
+  const remove = async (project: ProjectProgress) => {
+    if (!window.confirm(`Delete project "${project.name}" and all ${project.total} indexed files?`)) return;
+    setDeleting(project.name);
+    try {
+      await deleteProject(project.name);
+      toast.success(`Deleted "${project.name}"`);
+      refresh();
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete the project");
+    } finally {
+      setDeleting(null);
+    }
   };
 
   return (
@@ -86,8 +69,7 @@ export function ProjectsOverview({ documents, loading, error, onChanged }: Proje
           </p>
         )}
         {projects.map((p) => {
-          const total = p.docs.length;
-          const percent = Math.round(((p.indexed + p.failed) / total) * 100);
+          const percent = p.total ? Math.round(((p.indexed + p.failed) / p.total) * 100) : 0;
           const busy = p.processing > 0;
           return (
             <div key={p.name} className="rounded-xl border p-4">
@@ -95,11 +77,11 @@ export function ProjectsOverview({ documents, loading, error, onChanged }: Proje
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold">{p.name}</p>
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
-                    <span>{total} files</span>
+                    <span>{p.total} files</span>
                     {busy ? (
                       <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
                         <Loader2 className="size-3 animate-spin" />
-                        Indexing… {p.indexed}/{total}
+                        Indexing… {p.indexed}/{p.total}
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
@@ -108,7 +90,7 @@ export function ProjectsOverview({ documents, loading, error, onChanged }: Proje
                       </span>
                     )}
                     {p.failed > 0 && (
-                      <span className="text-destructive" title={p.docs.find((d) => d.status === "failed")?.error}>
+                      <span className="text-destructive" title={p.first_error ?? undefined}>
                         {p.failed} failed
                       </span>
                     )}
@@ -118,11 +100,12 @@ export function ProjectsOverview({ documents, loading, error, onChanged }: Proje
                   variant="ghost"
                   size="icon"
                   className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-                  onClick={() => removeProject(p)}
+                  onClick={() => remove(p)}
+                  disabled={deleting === p.name}
                   aria-label={`Delete ${p.name}`}
                   title="Delete project"
                 >
-                  <Trash2 className="size-4" />
+                  {deleting === p.name ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
                 </Button>
               </div>
               {busy && <Progress value={percent} className="mt-3 h-1.5" />}

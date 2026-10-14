@@ -26,3 +26,21 @@ export function importZipProject(file: File): Promise<ProjectImportResult> {
     timeout: 300000,
   });
 }
+
+export interface ProjectProgress {
+  name: string;
+  total: number;
+  indexed: number;
+  processing: number;
+  failed: number;
+  first_error: string | null;
+}
+
+export async function listProjects(): Promise<ProjectProgress[]> {
+  const data = await apiFetch<{ projects: ProjectProgress[] }>("/projects");
+  return data.projects;
+}
+
+export function deleteProject(name: string): Promise<void> {
+  return apiFetch<void>(`/projects/${encodeURIComponent(name)}`, { method: "DELETE", timeout: 120000 });
+}
