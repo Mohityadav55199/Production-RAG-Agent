@@ -45,9 +45,9 @@ services:
         generateValue: true
       - key: ALLOW_SIGNUP
         value: "true"
-      # Comma-separated emails allowed to use the shared /collections admin API (optional)
-      - key: ADMIN_EMAILS
-        sync: false
+      # Reverse proxies in front of the app; used to find the real client address for login rate limits
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
       # Optional: lets the GitHub importer read private repos and raises GitHub's rate limit
       - key: GITHUB_TOKEN
         sync: false

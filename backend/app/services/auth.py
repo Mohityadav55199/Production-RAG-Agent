@@ -3,6 +3,7 @@ Authentication helpers: password hashing (bcrypt), signed tokens (JWT) and the
 FastAPI dependencies that every protected route uses.
 """
 
+import asyncio
 import secrets
 import time
 import uuid
@@ -24,6 +25,10 @@ _fallback_secret: str | None = None
 
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_BYTES = 72  # bcrypt ignores everything past 72 bytes
+
+# bcrypt is deliberately slow (~250 ms of CPU). It runs in worker threads, and at most a few at once,
+# so a burst of logins can neither freeze the event loop nor exhaust the CPU.
+_hash_slots = asyncio.Semaphore(4)
 
 
 @dataclass(frozen=True)
@@ -73,6 +78,16 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+async def hash_password_async(password: str) -> str:
+    async with _hash_slots:
+        return await asyncio.to_thread(hash_password, password)
+
+
+async def verify_password_async(password: str, password_hash: str) -> bool:
+    async with _hash_slots:
+        return await asyncio.to_thread(verify_password, password, password_hash)
+
+
 # A real bcrypt hash checked when the email is unknown, so login time doesn't reveal which emails exist
 DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
 
@@ -114,8 +129,32 @@ async def get_current_user(
     return decode_token(credentials.credentials)
 
 
+# ── Admin = the owner: the first account ever created ────────────────────────
+# Deriving admin from an email address would let anyone register that address first and
+# become admin (emails are not verified). The first account is fixed once it exists.
+
+_owner_id: uuid.UUID | None = None
+
+
+def reset_owner_cache() -> None:
+    global _owner_id
+    _owner_id = None
+
+
+async def get_owner_id() -> uuid.UUID | None:
+    global _owner_id
+    if _owner_id is None:
+        from sqlalchemy import select
+
+        from app.db.auth_models import User
+        from app.db.postgres import get_db_session
+
+        async with get_db_session() as session:
+            _owner_id = await session.scalar(select(User.id).order_by(User.created_at.asc()).limit(1))
+    return _owner_id
+
+
 async def require_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-    admins = {e.strip().lower() for e in get_settings().ADMIN_EMAILS.split(",") if e.strip()}
-    if user.email.lower() not in admins:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "This action is restricted to administrators.")
+    if user.id != await get_owner_id():
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This action is restricted to the administrator.")
     return user

@@ -139,8 +139,11 @@ class Settings(BaseSettings):
     # ── Auth ──────────────────────────────────────────────────────────────────
     JWT_SECRET: str | None = None           # REQUIRED in production; a random one is used (with a warning) if unset
     JWT_EXPIRE_HOURS: int = 24 * 7
+    # How many reverse proxies sit in front of the app (Render's load balancer = 1). The client address is
+    # taken from the Nth entry from the END of X-Forwarded-For, which only trusted proxies write; entries
+    # further left are supplied by the client and can be forged. Raise it if logs show every user sharing one IP.
+    TRUSTED_PROXY_HOPS: int = 1
     ALLOW_SIGNUP: bool = True               # set false to close registration
-    ADMIN_EMAILS: str = ""                  # comma-separated emails allowed to use the global /collections admin endpoints
 
     RESUME_ATS_THRESHOLD: int = 82          # LaTeX/PDF are released only at or above this ATS score
     GITHUB_TOKEN: str | None = None        # optional: private repos + higher GitHub rate limit
