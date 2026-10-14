@@ -108,12 +108,38 @@ def create_token(user_id: uuid.UUID, email: str) -> str:
 def decode_token(token: str) -> CurrentUser:
     try:
         payload = jwt.decode(token, _secret(), algorithms=[_ALGORITHM])
+        if payload.get("typ") == "device":      # device tokens are not login sessions
+            raise ValueError("device token used as a session")
         return CurrentUser(id=uuid.UUID(payload["sub"]), email=payload.get("email", ""))
     except (jwt.PyJWTError, KeyError, ValueError) as exc:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, "Your session has expired. Please log in again.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+
+
+# ── Trusted-device tokens ────────────────────────────────────────────────────
+# Issued after each successful login and kept by the browser. A login that presents a valid one for
+# that account is not blocked by the per-account failure cap, so someone guessing passwords can never
+# lock the real owner out of their usual device.
+
+DEVICE_TOKEN_DAYS = 180
+
+
+def create_device_token(user_id: uuid.UUID) -> str:
+    now = int(time.time())
+    payload = {"sub": str(user_id), "typ": "device", "iat": now, "exp": now + DEVICE_TOKEN_DAYS * 86400}
+    return jwt.encode(payload, _secret(), algorithm=_ALGORITHM)
+
+
+def is_trusted_device(token: str | None, user_id: uuid.UUID) -> bool:
+    if not token:
+        return False
+    try:
+        payload = jwt.decode(token, _secret(), algorithms=[_ALGORITHM])
+        return payload.get("typ") == "device" and payload.get("sub") == str(user_id)
+    except jwt.PyJWTError:
+        return False
 
 
 # ── FastAPI dependencies ─────────────────────────────────────────────────────

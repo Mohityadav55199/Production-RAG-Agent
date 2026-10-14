@@ -1,7 +1,7 @@
 """
 Auth API.
 
-POST /auth/signup  – create an account, returns a session token
+POST /auth/signup  – create an account, returns a session token (+ a trusted-device token)
 POST /auth/login   – returns the same
 GET  /auth/me      – the current user, including whether they are the administrator
 
@@ -13,6 +13,10 @@ behind proxies and can be forged):
   per address, any account   30 failures / 15 min   – floods
   sign-ups per address       10 / hour
 
+The per-account cap would let an attacker lock the owner out, so a login that presents a valid
+trusted-device token for that account (issued after every successful login and kept by the owner's
+browser) is exempt from it. Attackers never have one, so they stay capped; the owner on their usual
+device cannot be locked out.
 """
 
 import time
@@ -30,10 +34,12 @@ from app.services.accounts import EMAIL_RE, admin_is_configured, claim_existing_
 from app.services.auth import (
     DUMMY_HASH,
     CurrentUser,
+    create_device_token,
     create_token,
     get_current_user,
     hash_password_async,
     is_admin_user,
+    is_trusted_device,
     validate_password,
     verify_password_async,
 )
@@ -113,10 +119,12 @@ def _client_ip(request: Request) -> str:
 class Credentials(BaseModel):
     email: str = Field(..., max_length=254)
     password: str = Field(..., max_length=200)
+    device: str | None = Field(None, max_length=2000, description="Trusted-device token from a previous login.")
 
 
 class AuthResponse(BaseModel):
     token: str
+    device: str
     user: dict
 
 
@@ -130,6 +138,7 @@ def _normalise_email(email: str) -> str:
 def _response(user: User) -> AuthResponse:
     return AuthResponse(
         token=create_token(user.id, user.email),
+        device=create_device_token(user.id),
         user={"id": str(user.id), "email": user.email, "is_admin": bool(user.is_admin)},
     )
 
@@ -174,15 +183,18 @@ async def login(body: Credentials, request: Request) -> AuthResponse:
     async with get_db_session() as session:
         user = await session.scalar(select(User).where(User.email == email))
 
+    trusted = bool(user and is_trusted_device(body.device, user.id))
     _enforce(_login_by_ip_email, ip_email_key, "failed attempts for this account")
-    _enforce(_login_by_email, email, "failed attempts for this account")
+    if not trusted:
+        _enforce(_login_by_email, email, "failed attempts for this account")
 
     # Always run one bcrypt check so response time doesn't reveal whether the email exists
     valid = await verify_password_async(body.password, user.password_hash if user else DUMMY_HASH)
     if not user or not valid:
         _login_by_ip.hit(ip)
         _login_by_ip_email.hit(ip_email_key)
-        _login_by_email.hit(email)
+        if not trusted:
+            _login_by_email.hit(email)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password.")
 
     _login_by_ip_email.reset(ip_email_key)
