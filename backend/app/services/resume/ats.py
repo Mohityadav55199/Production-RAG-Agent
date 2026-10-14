@@ -34,6 +34,7 @@ SYNONYM_GROUPS = [
     {"object oriented programming", "oop", "object-oriented programming"},
     {"data structures and algorithms", "dsa", "data structures", "algorithms"},
     {"sql", "structured query language"}, {"html", "html5"}, {"css", "css3"},
+    {"golang", "go"},
 ]
 _SYNONYMS: dict[str, set[str]] = {}
 for _group in SYNONYM_GROUPS:
@@ -147,14 +148,33 @@ def _term_regex(variant: str) -> re.Pattern:
     return re.compile(rf"(?<![a-z0-9]){body}{plural}(?![a-z0-9])", re.IGNORECASE)
 
 
+# Terms that are also everyday words/letters ("go to market", "R&D", "Plan C"). They only count when
+# written the way a skill is: capitalised AND either a list item or introduced by a cue word.
+_AMBIGUOUS_TERMS = {"go", "r", "c"}
+_CUE_WORDS = r"(?:in|with|using|and|or|of|for|on|plus|including|like|via|from)"
+
+
+def _ambiguous_match(variant: str, text: str) -> bool:
+    written = variant.upper() if len(variant) == 1 else variant.capitalize()   # R, C, Go
+    for token in re.split(r"[,;:|/\u2022\n()\[\]]+", text):
+        if token.strip() == written:
+            return True
+    return bool(re.search(rf"(?i:\b{_CUE_WORDS})\s+{written}(?![A-Za-z0-9+#])", text))
+
+
 def term_in_text(term: str, text: str) -> bool:
-    return any(_term_regex(v).search(text) for v in _variants(term))
+    for variant in _variants(term):
+        if variant in _AMBIGUOUS_TERMS:
+            if _ambiguous_match(variant, text):
+                return True
+        elif _term_regex(variant).search(text):
+            return True
+    return False
 
 
 def fallback_jd_analysis(jd_text: str) -> JDAnalysis:
     """Deterministic JD analysis used when the LLM is unavailable."""
-    lower = jd_text.lower()
-    found = [t for t in TECH_TERMS if term_in_text(t, lower)]
+    found = [t for t in TECH_TERMS if term_in_text(t, jd_text)]
     return JDAnalysis(must_have=found[:14], nice_to_have=found[14:24])
 
 
@@ -210,6 +230,8 @@ def _parsing_component(text: str, meta: dict | None, weight: int) -> Component:
 
 
 def _bullets(text: str) -> list[str]:
+    # Many PDFs extract the bullet glyph on its own line, with the text on the next one
+    text = re.sub(r"(?m)^[ \t]*([\u2022\u25aa\u25cf\u25e6\u2023\u2219\u00b7])[ \t]*\n+[ \t]*", r"\1 ", text)
     out = []
     for line in text.splitlines():
         m = re.match(r"^\s*(?:[-•*▪●]|•)\s*(.+)$", line)
