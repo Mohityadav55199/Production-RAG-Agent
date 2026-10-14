@@ -129,32 +129,22 @@ async def get_current_user(
     return decode_token(credentials.credentials)
 
 
-# ── Admin = the owner: the first account ever created ────────────────────────
-# Deriving admin from an email address would let anyone register that address first and
-# become admin (emails are not verified). The first account is fixed once it exists.
+# ── Administrator ────────────────────────────────────────────────────────────
+# The flag lives on the user row. It is set only by accounts.ensure_admin (ADMIN_EMAIL + ADMIN_PASSWORD
+# in the server environment) or, when no admin is configured, for the very first account. It can never
+# be obtained by registering an address.
 
-_owner_id: uuid.UUID | None = None
+async def is_admin_user(user_id: uuid.UUID) -> bool:
+    from sqlalchemy import select
 
+    from app.db.auth_models import User
+    from app.db.postgres import get_db_session
 
-def reset_owner_cache() -> None:
-    global _owner_id
-    _owner_id = None
-
-
-async def get_owner_id() -> uuid.UUID | None:
-    global _owner_id
-    if _owner_id is None:
-        from sqlalchemy import select
-
-        from app.db.auth_models import User
-        from app.db.postgres import get_db_session
-
-        async with get_db_session() as session:
-            _owner_id = await session.scalar(select(User.id).order_by(User.created_at.asc()).limit(1))
-    return _owner_id
+    async with get_db_session() as session:
+        return bool(await session.scalar(select(User.is_admin).where(User.id == user_id)))
 
 
 async def require_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-    if user.id != await get_owner_id():
+    if not await is_admin_user(user.id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This action is restricted to the administrator.")
     return user

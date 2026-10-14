@@ -33,6 +33,14 @@ _STATEMENTS = [
     """,
     "CREATE INDEX IF NOT EXISTS ix_documents_file_hash ON documents (file_hash)",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_user_hash ON documents (user_id, file_hash)",
+    # Administrator flag (replaces "the oldest account is admin")
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false",
+    # Deployments created before the flag existed: keep the original owner (oldest account) as admin
+    """
+    UPDATE users SET is_admin = true
+    WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)
+      AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin)
+    """,
     # Conversations become per-user
     "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS user_id VARCHAR(64)",
     "CREATE INDEX IF NOT EXISTS ix_conversations_user_id ON conversations (user_id)",

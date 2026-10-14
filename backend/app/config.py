@@ -143,6 +143,10 @@ class Settings(BaseSettings):
     # taken from the Nth entry from the END of X-Forwarded-For, which only trusted proxies write; entries
     # further left are supplied by the client and can be forged. Raise it if logs show every user sharing one IP.
     TRUSTED_PROXY_HOPS: int = 1
+    # The administrator account. Set BOTH: the account is created (or its password reset) at startup and is the
+    # only admin. Registering this address through the sign-up form never grants admin rights.
+    ADMIN_EMAIL: str = ""
+    ADMIN_PASSWORD: str = ""
     ALLOW_SIGNUP: bool = True               # set false to close registration
     RESUME_DAILY_LIMIT: int = 20            # tailoring runs per user per 24h (protects the shared LLM quota)
 

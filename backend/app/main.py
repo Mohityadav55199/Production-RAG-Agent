@@ -68,6 +68,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.services.document_service import recover_stuck_documents
     await recover_stuck_documents()
 
+    # ── Startup: the configured administrator account (ADMIN_EMAIL + ADMIN_PASSWORD) ──
+    from app.services.accounts import ensure_admin
+    await ensure_admin()
+
     # ── Startup: resume indexing interrupted by a restart ─────────────────────
     from app.services.resume.library import recover_pending_indexing
     try:
