@@ -101,6 +101,24 @@ The project incorporates production engineering best practices including:
 - Rich Markdown rendering, syntax-highlighted code blocks, and one-click copy.
 - Inline source citations and relevance scores.
 
+### 🖼 Images
+All four need `GOOGLE_API_KEY` (Gemini does the seeing); without it, text features keep working and image uploads fall back to OCR.
+- **Ask about an image:** attach, paste (Ctrl+V) or drag up to 3 images into the chat (an error screenshot, a diagram, a
+  photo). Gemini sees them together with your retrieved documents or code. Images are downscaled in your browser, re-encoded
+  on the server (metadata and hidden payloads dropped, SVG rejected), and **never stored**; the chat history only notes that
+  images were attached.
+- **Image library:** upload PNG, JPG, WebP, BMP or TIFF files. Each gets OCR plus an AI description, so a photo or chart with
+  no text is still searchable. Thumbnails appear in your document list and next to answers that use the image.
+- **Figures from documents:** pictures in PDFs, slides and Word files are extracted (icons and logos are skipped, scans are
+  not treated as figures). The largest few are captioned by Gemini so questions can find them, and answers show the images
+  from the pages they cite.
+- **Code screenshots:** in *Compare Code*, use **From screenshot** (or paste or drop an image into the box) to turn a code
+  screenshot into editable text, with indentation kept. Without a Gemini key it falls back to OCR and tells you to check it.
+
+Limits (all configurable, see `backend/.env.example`): 3 images per question, 4 MB each after the browser's downscaling,
+25 megapixels, 40 stored figures and 6 AI captions per document, and 40 image requests per user per hour. Stored images
+live in PostgreSQL (up to 1600 px plus a 320 px thumbnail each) and are deleted with their document.
+
 ### 📊 Real-Time Health & Storage Dashboard
 - Live dependency status checks for FastAPI, Google Gemini, PostgreSQL, and Qdrant.
 - Real-time document count, chunk count, and storage utilization metrics.
