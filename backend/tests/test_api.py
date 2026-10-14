@@ -56,7 +56,8 @@ def _reset_rate_limits():
     """Rate-limit state is per process; keep tests independent of each other."""
     from app.api import auth as auth_api
 
-    for limiter in (auth_api._login_by_ip_email, auth_api._login_by_ip, auth_api._login_by_email, auth_api._signup_by_ip):
+    for limiter in (auth_api._login_by_ip_email, auth_api._login_by_ip, auth_api._login_by_email,
+                    auth_api._signup_by_ip, auth_api._login_by_peer, auth_api._signup_by_peer):
         limiter._events.clear()
     yield
 
@@ -242,6 +243,68 @@ class TestRateLimits:
         r = client.post("/auth/login", headers={"X-Forwarded-For": "10.5.0.1"},
                         json={"email": "alice@example.com", "password": "wrong password 1", "device": session})
         assert r.status_code == 401                                  # a session token is not a device token
+
+    @pytest.fixture
+    def behind_vercel(self, monkeypatch):
+        """Production topology: browser -> Vercel -> Cloudflare -> Render."""
+        from app.config import get_settings
+
+        settings = get_settings()
+        monkeypatch.setattr(settings, "CLIENT_IP_HEADER", "cf-connecting-ip")
+        monkeypatch.setattr(settings, "FRONTEND_FORWARDS_CLIENT_IP", True)
+
+    @staticmethod
+    def _via_vercel(visitor_ip: str) -> dict:
+        # cf-connecting-ip is Vercel's server: identical for every visitor
+        return {"cf-connecting-ip": "65.2.144.101", "forwarded": f"for={visitor_ip};host=site;proto=https"}
+
+    def test_visitors_behind_the_frontend_proxy_do_not_share_a_rate_limit_bucket(self, client, behind_vercel):
+        noisy = [client.post("/auth/login", headers=self._via_vercel("8.8.8.8"),
+                             json={"email": "noisy@example.com", "password": f"guess {i}"}).status_code
+                 for i in range(8)]
+        assert noisy.count(401) == 6 and 429 in noisy                    # the noisy visitor is limited...
+        calm = client.post("/auth/login", headers=self._via_vercel("1.1.1.1"),
+                           json={"email": "calm@example.com", "password": "wrong"})
+        assert calm.status_code == 401                                   # ...and a different visitor is not affected
+
+    def test_per_visitor_ip_flood_limit_is_per_visitor_not_global(self, client, behind_vercel):
+        for i in range(30):                                              # one visitor, many accounts
+            client.post("/auth/login", headers=self._via_vercel("8.8.8.8"),
+                        json={"email": f"user{i}@example.com", "password": "wrong"})
+        blocked = client.post("/auth/login", headers=self._via_vercel("8.8.8.8"),
+                              json={"email": "another@example.com", "password": "wrong"})
+        other = client.post("/auth/login", headers=self._via_vercel("1.1.1.1"),
+                            json={"email": "another@example.com", "password": "wrong"})
+        assert blocked.status_code == 429 and other.status_code == 401
+
+    def test_forging_the_visitor_address_cannot_get_around_the_origin_limit(self, client, behind_vercel, monkeypatch):
+        """Calling the backend directly lets you forge the forwarded address, but not the connecting one."""
+        from app.api import auth as auth_api
+
+        monkeypatch.setattr(auth_api._login_by_peer, "limit", 5)
+        codes = [client.post("/auth/login", headers=self._via_vercel(f"8.8.{i}.{i + 1}"),
+                             json={"email": f"forger{i}@example.com", "password": "wrong"}).status_code
+                 for i in range(8)]
+        assert codes.count(401) == 5 and codes.count(429) == 3, codes
+
+    def test_signup_flood_with_forged_visitor_addresses_hits_the_origin_limit(self, client, behind_vercel, monkeypatch):
+        from app.api import auth as auth_api
+
+        monkeypatch.setattr(auth_api._signup_by_peer, "limit", 3)
+        codes = [client.post("/auth/signup", headers=self._via_vercel(f"9.9.{i}.{i + 1}"),
+                             json={"email": f"flood{i}@example.com", "password": "flood password 1"}).status_code
+                 for i in range(5)]
+        assert codes.count(201) == 3 and codes.count(429) == 2, codes
+        run_sql("DELETE FROM users WHERE email LIKE 'flood%@example.com'")
+
+    def test_network_check_with_the_production_headers(self, client, users, behind_vercel):
+        headers = {**users["alice"],
+                   "x-forwarded-for": "220.158.168.162,65.2.144.101, 172.71.198.72, 10.27.213.240",
+                   "cf-connecting-ip": "65.2.144.101",
+                   "forwarded": "for=220.158.168.162;host=production-rag-agent.onrender.com;proto=https"}
+        body = client.get("/admin/network", headers=headers).json()
+        assert body["detected_client_ip"] == "220.158.168.162" and body["peer_ip"] == "65.2.144.101"
+        assert "consistent" in body["notes"][0]
 
     def test_signup_attempts_per_address_are_limited(self, client):
         codes = [client.post("/auth/signup", json={"email": f"spam{i}@example.com", "password": "spam password 1"}).status_code

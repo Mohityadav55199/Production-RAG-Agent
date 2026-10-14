@@ -209,11 +209,19 @@ npm run dev
      data that existed before accounts were added. Registering the admin's address through the sign-up form never
      grants admin rights (email addresses aren't verified), and an email with no password is ignored. Without these two,
      the first account to register becomes the admin, so register yours straight away.
-   - `TRUSTED_PROXY_HOPS` (`1`) and optionally `CLIENT_IP_HEADER`: how to find the real client address behind proxies.
-     This only feeds abuse limits; password guessing is capped per account regardless. After deploying, log in as the
-     admin, open **Settings → Network check** and compare "Detected client IP" with your real public IP. If it shows a
-     proxy address, raise `TRUSTED_PROXY_HOPS` or set `CLIENT_IP_HEADER` (for example `cf-connecting-ip`) to a header your
-     proxy always overwrites.
+   - **Client address settings.** With the default Vercel → Render setup the request passes through Vercel, Cloudflare
+     and Render's own proxy, and by default every visitor would be identified as Render's internal proxy and share one
+     rate limit. Set both of these:
+     - `CLIENT_IP_HEADER` = `cf-connecting-ip` (the address Cloudflare saw connect, which clients cannot forge; here it
+       is Vercel's server)
+     - `FRONTEND_FORWARDS_CLIENT_IP` = `true` (Vercel overwrites `X-Forwarded-For` / `Forwarded` with the visitor's own
+       address, which tells users apart; leave it `false` if browsers call the API directly)
+
+     This only feeds abuse limits; password guessing is capped per account regardless, and a loose per-origin limit
+     stops anyone who bypasses Vercel and forges the visitor address. After deploying, log in as the admin, open
+     **Settings → Network check**: "Detected client IP" should equal your real public IP (search "what is my IP"), and
+     the card lists what to change if it doesn't. `TRUSTED_PROXY_HOPS` (default `1`) is only used when
+     `CLIENT_IP_HEADER` is not set.
    - Optional: `ALLOW_SIGNUP` (`false` closes registration), `GITHUB_TOKEN` (private repos), `RESUME_DAILY_LIMIT`.
 5. Click **Create Web Service**. Your backend will be live at `https://production-rag-agent.onrender.com`.
 6. Log in with the admin account. Once you've signed in, you can remove `ADMIN_PASSWORD` from the environment: the

@@ -51,6 +51,13 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+      # Browser -> Vercel -> Cloudflare -> Render. cf-connecting-ip is the address Cloudflare saw connect (Vercel's
+      # server: it cannot be forged), and Vercel forwards the visitor's own address, which identifies each user.
+      # Verify under Settings -> Network check. Remove both if browsers call the API directly.
+      - key: CLIENT_IP_HEADER
+        value: cf-connecting-ip
+      - key: FRONTEND_FORWARDS_CLIENT_IP
+        value: "true"
       # Reverse proxies in front of the app; used to find the real client address for abuse limits
       - key: TRUSTED_PROXY_HOPS
         value: "1"

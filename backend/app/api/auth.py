@@ -19,9 +19,6 @@ browser) is exempt from it. Attackers never have one, so they stay capped; the o
 device cannot be locked out.
 """
 
-import time
-from collections import deque
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -43,7 +40,8 @@ from app.services.auth import (
     validate_password,
     verify_password_async,
 )
-from app.utils.client_ip import client_ip
+from app.utils.client_ip import client_address
+from app.utils.rate_limit import SlidingWindowLimiter
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -51,52 +49,16 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
-class SlidingWindowLimiter:
-    """Counts events per key inside a time window. Memory is bounded: expired keys are pruned,
-    and if an attacker floods with unique keys the oldest ones are dropped."""
-
-    def __init__(self, limit: int, window_seconds: int, max_keys: int = 10_000):
-        self.limit = limit
-        self.window = window_seconds
-        self.max_keys = max_keys
-        self._events: dict[str, deque[float]] = {}
-
-    def _prune(self, now: float) -> None:
-        if len(self._events) <= self.max_keys:
-            return
-        for key in [k for k, q in self._events.items() if not q or now - q[-1] > self.window]:
-            del self._events[key]
-        if len(self._events) > self.max_keys:  # still flooded: drop the oldest tenth
-            oldest = sorted(self._events, key=lambda k: self._events[k][-1])[: self.max_keys // 10]
-            for key in oldest:
-                del self._events[key]
-
-    def retry_after_minutes(self, key: str) -> int | None:
-        """Minutes until the key may try again, or None if it is under the limit."""
-        now = time.time()
-        events = self._events.get(key)
-        if not events:
-            return None
-        while events and now - events[0] > self.window:
-            events.popleft()
-        if len(events) >= self.limit:
-            return int(self.window - (now - events[0])) // 60 + 1
-        return None
-
-    def hit(self, key: str) -> None:
-        now = time.time()
-        self._prune(now)
-        self._events.setdefault(key, deque()).append(now)
-
-    def reset(self, key: str) -> None:
-        self._events.pop(key, None)
-
-
 # Per process, which is fine for a single instance.
 _login_by_ip_email = SlidingWindowLimiter(limit=6, window_seconds=15 * 60)
 _login_by_ip = SlidingWindowLimiter(limit=30, window_seconds=15 * 60)
 _login_by_email = SlidingWindowLimiter(limit=12, window_seconds=15 * 60)
 _signup_by_ip = SlidingWindowLimiter(limit=10, window_seconds=60 * 60)
+# The connecting ("peer") address cannot be forged, but behind a frontend proxy it is shared by every visitor,
+# so these are far looser: they only stop one origin (e.g. someone bypassing the frontend and forging the
+# visitor address to dodge the limits above) from flooding the API.
+_login_by_peer = SlidingWindowLimiter(limit=600, window_seconds=15 * 60)
+_signup_by_peer = SlidingWindowLimiter(limit=200, window_seconds=60 * 60)
 
 
 def _enforce(limiter: SlidingWindowLimiter, key: str, what: str) -> None:
@@ -139,9 +101,12 @@ def _response(user: User) -> AuthResponse:
 async def signup(body: Credentials, request: Request) -> AuthResponse:
     if not get_settings().ALLOW_SIGNUP:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Registration is closed.")
-    ip = client_ip(request)
+    address = client_address(request)
+    ip = address.client
     _enforce(_signup_by_ip, ip, "sign-up attempts from this network")
+    _enforce(_signup_by_peer, address.peer, "sign-up attempts from this network")
     _signup_by_ip.hit(ip)
+    _signup_by_peer.hit(address.peer)
 
     email = _normalise_email(body.email)
     problem = validate_password(body.password)
@@ -168,9 +133,11 @@ async def signup(body: Credentials, request: Request) -> AuthResponse:
 @router.post("/login", response_model=AuthResponse)
 async def login(body: Credentials, request: Request) -> AuthResponse:
     email = body.email.strip().lower()
-    ip = client_ip(request)
+    address = client_address(request)
+    ip = address.client
     ip_email_key = f"{ip}|{email}"
     _enforce(_login_by_ip, ip, "failed attempts from this network")
+    _enforce(_login_by_peer, address.peer, "failed attempts from this network")
 
     async with get_db_session() as session:
         user = await session.scalar(select(User).where(User.email == email))
@@ -184,6 +151,7 @@ async def login(body: Credentials, request: Request) -> AuthResponse:
     valid = await verify_password_async(body.password, user.password_hash if user else DUMMY_HASH)
     if not user or not valid:
         _login_by_ip.hit(ip)
+        _login_by_peer.hit(address.peer)
         _login_by_ip_email.hit(ip_email_key)
         if not trusted:
             _login_by_email.hit(email)

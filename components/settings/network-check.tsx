@@ -16,12 +16,15 @@ import {
 
 interface NetworkInfo {
   detected_client_ip: string;
+  peer_ip: string;
   socket_address: string | null;
   trusted_proxy_hops: number;
   client_ip_header: string | null;
+  frontend_forwards_client_ip: boolean;
+  forwarded_client_candidate: string | null;
   headers: Record<string, string>;
   x_forwarded_for_entries: string[];
-  how_to_check: string;
+  notes: string[];
 }
 
 /** Administrator-only: shows how this request reached the server, so the proxy settings can be verified. */
@@ -53,7 +56,8 @@ export function NetworkCheck() {
         </CardTitle>
         <CardDescription>
           Shows the address the server detects for you. It feeds the sign-up and login abuse limits, so it should match
-          your real public IP.
+          your real public IP (search &quot;what is my IP&quot;). If visitors were all identified as one address, they would
+          share one limit.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -67,12 +71,16 @@ export function NetworkCheck() {
             <dl className="grid gap-x-6 gap-y-1.5 sm:grid-cols-[max-content_1fr]">
               <dt className="text-muted-foreground">Detected client IP</dt>
               <dd className="font-mono font-semibold">{info.detected_client_ip}</dd>
-              <dt className="text-muted-foreground">Socket address (the proxy)</dt>
+              <dt className="text-muted-foreground">Connecting address (cannot be forged)</dt>
+              <dd className="font-mono">{info.peer_ip}</dd>
+              <dt className="text-muted-foreground">Socket address (last proxy)</dt>
               <dd className="font-mono">{info.socket_address ?? "unknown"}</dd>
-              <dt className="text-muted-foreground">Trusted proxy hops</dt>
-              <dd className="font-mono">{info.trusted_proxy_hops}</dd>
               <dt className="text-muted-foreground">Client IP header</dt>
               <dd className="font-mono">{info.client_ip_header ?? "not set (using X-Forwarded-For)"}</dd>
+              <dt className="text-muted-foreground">Trusted proxy hops</dt>
+              <dd className="font-mono">{info.trusted_proxy_hops}</dd>
+              <dt className="text-muted-foreground">Frontend forwards visitor IP</dt>
+              <dd className="font-mono">{info.frontend_forwards_client_ip ? "yes" : "no"}</dd>
             </dl>
 
             {Object.keys(info.headers).length > 0 && (
@@ -86,7 +94,17 @@ export function NetworkCheck() {
               </div>
             )}
 
-            <p className="text-xs text-muted-foreground">{info.how_to_check}</p>
+            <ul className="space-y-2">
+              {info.notes.map((note, i) => (
+                <li
+                  key={i}
+                  className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs data-[ok=true]:border-emerald-500/30 data-[ok=true]:bg-emerald-500/10"
+                  data-ok={note.startsWith("Looks consistent")}
+                >
+                  {note}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </CardContent>

@@ -146,6 +146,11 @@ class Settings(BaseSettings):
     # Optional: read the client address from this header instead (e.g. "cf-connecting-ip", which Cloudflare
     # always overwrites). Only set it if your proxy really sets it; verify with the admin network check.
     CLIENT_IP_HEADER: str = ""
+    # True when a frontend proxy that you trust (e.g. Vercel, which overwrites X-Forwarded-For with the visitor's
+    # address) sits in front of this API. Visitors are then told apart by the address it forwards instead of all
+    # sharing the proxy's. Someone calling the API directly can forge it, so the connecting address is also
+    # limited, loosely. Leave false if the API is reached directly by browsers.
+    FRONTEND_FORWARDS_CLIENT_IP: bool = False
     # The administrator account. Set BOTH: the account is created (or its password reset) at startup and is the
     # only admin. Registering this address through the sign-up form never grants admin rights.
     ADMIN_EMAIL: str = ""
