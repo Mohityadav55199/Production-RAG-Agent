@@ -57,12 +57,21 @@ async def retrieve_chunks(
     vectors = await embed_batch_with_retry([query], task_type="RETRIEVAL_QUERY")
     query_vector = vectors[0]
 
-    search_results = await client.search(
-        collection_name=coll,
-        query_vector=query_vector,
-        limit=top_k,
-        with_payload=True,
-    )
+    if hasattr(client, "query_points"):
+        query_response = await client.query_points(
+            collection_name=coll,
+            query=query_vector,
+            limit=top_k,
+            with_payload=True,
+        )
+        search_results = query_response.points
+    else:
+        search_results = await client.search(
+            collection_name=coll,
+            query_vector=query_vector,
+            limit=top_k,
+            with_payload=True,
+        )
 
     # Log all raw candidate scores before filtering
     if search_results:

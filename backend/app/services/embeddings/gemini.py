@@ -1,5 +1,9 @@
-import google.generativeai as genai
+import warnings
 from typing import Any
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    import google.generativeai as genai
 
 from app.config import get_settings
 from app.services.embeddings.base import BaseEmbeddingProvider
