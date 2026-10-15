@@ -16,20 +16,25 @@ services:
         sync: false
       - key: PRIMARY_LLM_PROVIDER
         value: groq
+      # Groq retired llama-3.3-70b-versatile / llama-3.1-8b-instant on free and developer tiers (16 Aug 2026)
       - key: PRIMARY_LLM_MODEL
-        value: llama-3.3-70b-versatile
+        value: openai/gpt-oss-120b
+      - key: GROQ_REASONING_EFFORT
+        value: low
+      - key: QUERY_REWRITE_MODEL
+        value: openai/gpt-oss-20b
       - key: ENABLE_LLM_FALLBACK
         value: "true"
       - key: FALLBACK_LLM_PROVIDER
         value: groq
       - key: FALLBACK_LLM_MODELS
-        value: llama-3.1-8b-instant, openai/gpt-oss-120b, openai/gpt-oss-20b
+        value: openai/gpt-oss-20b, gemini:gemini-2.5-flash
       - key: GOOGLE_API_KEY
         sync: false
       - key: GEMINI_EMBEDDING_MODEL
         value: models/gemini-embedding-001
       - key: EMBEDDING_DIMENSION
-        value: 3072
+        value: "3072"
       - key: DATABASE_URL
         sync: false
       - key: QDRANT_URL
@@ -65,6 +70,6 @@ services:
       - key: GITHUB_TOKEN
         sync: false
       - key: MAX_UPLOAD_SIZE_MB
-        value: 50
+        value: "50"
       - key: MAX_FILES_PER_UPLOAD
-        value: 10
+        value: "10"

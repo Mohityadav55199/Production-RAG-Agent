@@ -24,20 +24,23 @@ class Settings(BaseSettings):
 
     # ── LLM Configuration (Configurable, No hardcoding) ────────────────────────
     PRIMARY_LLM_PROVIDER: str = "groq"       # "groq" | "gemini" | "auto"
-    PRIMARY_LLM_MODEL: str = "llama-3.3-70b-versatile"
+    # Groq retired llama-3.3-70b-versatile and llama-3.1-8b-instant on its free/developer tiers (16 Aug 2026)
+    PRIMARY_LLM_MODEL: str = "openai/gpt-oss-120b"
     LLM_TEMPERATURE: float = 0.1
     LLM_PROVIDER: str = "auto"
 
     # ── Fallback LLM Configuration ─────────────────────────────────────────────
     ENABLE_LLM_FALLBACK: bool = True
     FALLBACK_LLM_PROVIDER: str = "groq"       # default fallback provider: "groq" | "gemini"
-    FALLBACK_LLM_MODELS: str = "llama-3.1-8b-instant, openai/gpt-oss-120b, openai/gpt-oss-20b"  # comma-separated chain of fallbacks
-    FALLBACK_LLM_MODEL: str = "llama-3.1-8b-instant"
+    # comma-separated chain of fallbacks; "provider:model" picks another provider (skipped without its key)
+    FALLBACK_LLM_MODELS: str = "openai/gpt-oss-20b, gemini:gemini-2.5-flash"
+    FALLBACK_LLM_MODEL: str = "openai/gpt-oss-20b"
     FALLBACK_LLM_TEMPERATURE: float = 0.1
 
     # ── Provider Specific Keys & Models ────────────────────────────────────────
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
+    GROQ_REASONING_EFFORT: str = "low"     # gpt-oss models only: "low" | "medium" | "high" (more = slower)
 
     GOOGLE_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
@@ -50,7 +53,7 @@ class Settings(BaseSettings):
     RETRIEVAL_MIN_SCORE: float = 0.63        # minimum cosine similarity score threshold
     RETRIEVAL_MAX_GAP: float = 0.05          # maximum score difference from top score to keep a candidate
     QUERY_REWRITE_ENABLED: bool = True       # rewrite follow-up questions into standalone search queries
-    QUERY_REWRITE_MODEL: str = "llama-3.1-8b-instant"   # small, fast Groq model for that rewrite
+    QUERY_REWRITE_MODEL: str = "openai/gpt-oss-20b"     # small, fast Groq model for that rewrite
     MAX_HISTORY_PAIRS: int = 3             # conversation turns kept in context window
     RERANKING_ENABLED: bool = True           # second-stage flash cross-encoder reranker
     RERANKING_CANDIDATE_FACTOR: int = 3      # candidate oversampling factor for reranking

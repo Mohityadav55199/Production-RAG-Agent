@@ -19,6 +19,17 @@ from app.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
+# Groq models that accept ``reasoning_effort`` (other models reject the parameter)
+_REASONING_MODEL_PREFIXES = ("openai/gpt-oss",)
+
+# Used only when FALLBACK_LLM_MODELS yields nothing usable
+_EMERGENCY_GROQ_FALLBACKS = ("openai/gpt-oss-20b", "openai/gpt-oss-120b")
+
+
+def _is_reasoning_model(model_name: str) -> bool:
+    return model_name.startswith(_REASONING_MODEL_PREFIXES)
+
+
 def build_chat_model(
     provider: str,
     model_name: str,
@@ -36,6 +47,11 @@ def build_chat_model(
     if prov == "groq":
         from langchain_groq import ChatGroq
 
+        extra: dict[str, Any] = {}
+        if _is_reasoning_model(model_name):
+            # gpt-oss thinks before answering; Groq returns that separately from the answer text.
+            # Low effort keeps first-token latency close to a non-reasoning model.
+            extra["reasoning_effort"] = get_settings().GROQ_REASONING_EFFORT or "low"
         return ChatGroq(
             model=model_name,
             groq_api_key=api_key or None,
@@ -43,6 +59,7 @@ def build_chat_model(
             streaming=streaming,
             disable_streaming=disable_streaming,
             max_retries=2,
+            **extra,
         )
 
     elif prov in ("gemini", "google", "google-genai"):
@@ -79,17 +96,19 @@ def get_configured_llm(
     settings = get_settings()
 
     # Determine primary provider & model
-    primary_provider = (
-        requested_provider
-        or getattr(settings, "PRIMARY_LLM_PROVIDER", None)
-        or ("groq" if settings.GROQ_API_KEY else "gemini")
-    ).lower()
+    primary_provider = (requested_provider or settings.PRIMARY_LLM_PROVIDER or "auto").lower()
+    if primary_provider == "auto":
+        primary_provider = "groq" if settings.GROQ_API_KEY else "gemini"
+
+    # PRIMARY_LLM_MODEL names the model of PRIMARY_LLM_PROVIDER; the per-provider settings cover the rest
+    configured_provider = (settings.PRIMARY_LLM_PROVIDER or "").lower()
+    configured_model = settings.PRIMARY_LLM_MODEL if configured_provider == primary_provider else ""
 
     if primary_provider == "groq":
-        primary_model = requested_model or settings.GROQ_MODEL or "llama-3.3-70b-versatile"
+        primary_model = requested_model or configured_model or settings.GROQ_MODEL or "openai/gpt-oss-120b"
         primary_key = settings.GROQ_API_KEY
     else:
-        primary_model = requested_model or settings.GEMINI_MODEL or "gemini-2.5-flash"
+        primary_model = requested_model or configured_model or settings.GEMINI_MODEL or "gemini-2.5-flash"
         primary_key = settings.GOOGLE_API_KEY
 
     # Auto-switch if primary key is missing but alternative is present
@@ -101,7 +120,7 @@ def get_configured_llm(
     elif primary_provider == "gemini" and not primary_key and settings.GROQ_API_KEY:
         logger.warning("GOOGLE_API_KEY is not configured; falling back to Groq as primary")
         primary_provider = "groq"
-        primary_model = settings.GROQ_MODEL or "llama-3.3-70b-versatile"
+        primary_model = settings.GROQ_MODEL or "openai/gpt-oss-120b"
         primary_key = settings.GROQ_API_KEY
 
     logger.info("Initializing primary LLM: provider=%s, model=%s", primary_provider, primary_model)
@@ -174,7 +193,7 @@ def get_configured_llm(
 
     # Emergency fallback if list was empty or couldn't resolve
     if not fallbacks and settings.GROQ_API_KEY:
-        for backup in ["llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]:
+        for backup in _EMERGENCY_GROQ_FALLBACKS:
             if backup not in seen_models:
                 fallbacks.append(
                     build_chat_model(

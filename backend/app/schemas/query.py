@@ -45,7 +45,7 @@ class QueryRequest(BaseModel):
     )
     model: str | None = Field(
         None,
-        description="Optional LLM model override (e.g., 'llama-3.3-70b-versatile', 'gemini-2.5-flash').",
+        description="Optional LLM model override (e.g., 'openai/gpt-oss-120b', 'gemini-2.5-flash').",
     )
     images: list[ImageInput] = Field(
         default_factory=list,

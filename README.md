@@ -93,7 +93,7 @@ The project incorporates production engineering best practices including:
 
 ### 🤖 LangGraph Context Construction & Gemini Reasoning
 - Multi-step reasoning pipeline built with LangGraph.
-- Uses `gemini-2.5-flash` for low-latency, high-accuracy reasoning.
+- Answers with Groq `openai/gpt-oss-120b` by default, falling back to `gpt-oss-20b` and then Gemini 2.5 Flash on rate limits; image questions go to Gemini.
 - High-dimensional vector representations with `models/gemini-embedding-001` (3072 dimensions).
 
 ### 💬 Real-Time Streaming AI Chat
@@ -144,7 +144,7 @@ compatibility from the compiled PDF.
 - **Backend**: FastAPI, LangGraph, LangChain, Pydantic v2, SQLAlchemy 2.0 (Async)
 - **Vector Database**: Qdrant (Qdrant Cloud / Docker)
 - **Relational Database**: PostgreSQL (Neon Serverless / Supabase / Local)
-- **AI Models**: Google Gemini 2.5 Flash & Gemini Text Embedding 001
+- **AI Models**: Groq gpt-oss-120b / gpt-oss-20b (answers), Google Gemini 2.5 Flash (vision, fallback) & Gemini Embedding 001
 - **Deployment**: Render (Docker Backend), Vercel (Next.js Frontend)
 
 ---
