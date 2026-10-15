@@ -1,5 +1,6 @@
 import { RequireAuth } from "@/components/auth/require-auth";
 import { AppHeader } from "@/components/layout/app-header";
+import { WakingBanner } from "@/components/layout/waking-banner";
 
 export function AppShell({
   activePath,
@@ -16,6 +17,7 @@ export function AppShell({
         <div className="absolute -bottom-40 left-0 h-[400px] w-[400px] rounded-full bg-violet-500/5 blur-3xl" />
       </div>
 
+      <WakingBanner />
       <AppHeader activePath={activePath} />
 
       <main className="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
