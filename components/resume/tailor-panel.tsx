@@ -6,13 +6,17 @@ import {
   Briefcase,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Download,
   FileCode2,
+  FileText,
   Loader2,
   Pencil,
   Sparkles,
   Square,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -79,6 +83,7 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }
   const abortRef = useRef<AbortController | null>(null);
   const [saved] = useState(loadForm);
   const [jd, setJd] = useState(saved?.jd ?? "");
+  const [jdCollapsed, setJdCollapsed] = useState(false);
   const [outputName, setOutputName] = useState(saved?.outputName ?? "");
   const [running, setRunning] = useState(false);
   const [steps, setSteps] = useState<StepRow[]>([]);
@@ -125,6 +130,7 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }
     try {
       const isText = /\.(txt|md)$/i.test(file.name);
       setJd(isText ? await file.text() : await extractText(file));
+      setJdCollapsed(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not read the file");
     } finally {
@@ -156,7 +162,10 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }
         { jd_text: jd.trim(), output_name: outputName.trim() || "resume", options: layout },
         (event) => {
           if (event.type === "step") applyStep(event);
-          else if (event.type === "result") setResult(event);
+          else if (event.type === "result") {
+            setResult(event);
+            setJdCollapsed(true);
+          }
           else if (event.type === "error") setError(event.message);
         },
         abortRef.current.signal
@@ -192,118 +201,231 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const jdTrimmed = jd.trim();
+  const wordCount = jdTrimmed ? jdTrimmed.split(/\s+/).length : 0;
+
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Tailor a resume to a job</CardTitle>
-          <CardDescription>
-            Paste or upload the job description. The agents pick the best facts from your library, write the
-            resume, and score it. Aim for an ATS score of 82 or more; you can edit the result and download it either way.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {noLibrary && (
-            <div className="flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-              <span>Your resume library is empty. Add at least one resume first.</span>
-              <Button size="sm" variant="outline" onClick={onGoToLibrary}>
-                Add resumes
-              </Button>
-            </div>
+      {/* Top 2-Column Responsive Grid */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
+        {/* Left Column: Job Description & Pipeline Progress */}
+        <div className="space-y-4 lg:col-span-7">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <FileText className="size-4 text-primary" />
+                  <CardTitle className="text-base">Job description</CardTitle>
+                  {jdTrimmed.length > 0 && (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                      {wordCount} words · {jdTrimmed.length.toLocaleString()} chars
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md"
+                    className="hidden"
+                    onChange={(e) => e.target.files?.[0] && loadJdFile(e.target.files[0])}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 gap-1 text-xs"
+                    disabled={running || reading}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    {reading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+                    Upload file
+                  </Button>
+                  {jdTrimmed.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 gap-1 text-xs text-muted-foreground hover:text-destructive"
+                      disabled={running}
+                      onClick={() => {
+                        setJd("");
+                        setJdCollapsed(false);
+                      }}
+                      title="Clear job description"
+                    >
+                      <Trash2 className="size-3.5" />
+                      Clear
+                    </Button>
+                  )}
+                  {jdTrimmed.length >= 80 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 gap-1 text-xs font-medium text-primary"
+                      disabled={running}
+                      onClick={() => setJdCollapsed((c) => !c)}
+                    >
+                      {jdCollapsed ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />}
+                      {jdCollapsed ? "Expand" : "Compact"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <CardDescription>
+                Paste or upload the role you&apos;re applying for. AI extracts requirements to match your facts.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              {jdCollapsed && jdTrimmed.length >= 80 ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/40 p-3 text-sm">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <FileText className="size-4 shrink-0 text-muted-foreground" />
+                    <p className="truncate font-mono text-xs text-muted-foreground">
+                      {jdTrimmed.slice(0, 100).replace(/\s+/g, " ")}…
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 shrink-0 text-xs font-medium"
+                    onClick={() => setJdCollapsed(false)}
+                  >
+                    <ChevronDown className="mr-1 size-3" />
+                    Expand full JD
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Textarea
+                    id="jd"
+                    value={jd}
+                    onChange={(e) => setJd(e.target.value)}
+                    placeholder="Paste the full job description here…"
+                    className="h-[180px] max-h-[260px] resize-y overflow-y-auto font-mono text-xs leading-relaxed sm:text-sm"
+                    disabled={running}
+                  />
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {jdTrimmed.length < 80
+                        ? "Paste at least 80 characters of the job description."
+                        : `${wordCount} words · ${jdTrimmed.length.toLocaleString()} characters`}
+                    </span>
+                    {jdTrimmed.length >= 80 && (
+                      <button
+                        type="button"
+                        className="text-primary/80 hover:underline"
+                        onClick={() => setJdCollapsed(true)}
+                      >
+                        Compact JD view
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Progress or Errors in Left Column */}
+          {(running || steps.length > 0) && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Agent progress</CardTitle>
+                <CardDescription>May take a minute or two. Each rewrite is re-scored.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ol className="space-y-2">
+                  {steps.map((s) => (
+                    <li key={s.key} className="flex items-start gap-2.5 text-sm">
+                      {s.status === "running" ? (
+                        <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-primary" />
+                      ) : (
+                        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+                      )}
+                      <span className={cn(s.status === "running" && "text-foreground", s.status === "done" && "text-muted-foreground")}>
+                        {s.message}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
           )}
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label htmlFor="jd" className="text-sm font-medium">Job description</label>
-              <div>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".pdf,.docx,.txt,.md"
-                  className="hidden"
-                  onChange={(e) => e.target.files?.[0] && loadJdFile(e.target.files[0])}
-                />
-                <Button type="button" variant="ghost" size="sm" disabled={running || reading} onClick={() => fileRef.current?.click()}>
-                  {reading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                  Upload JD file
-                </Button>
-              </div>
+          {error && (
+            <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <span>{error}</span>
             </div>
-            <Textarea
-              id="jd"
-              value={jd}
-              onChange={(e) => setJd(e.target.value)}
-              placeholder="Paste the full job description here…"
-              className="min-h-[200px] text-sm"
-              disabled={running}
-            />
-            <p className="text-xs text-muted-foreground">
-              {jd.trim().length < 80 ? "Paste at least a few lines of the job description." : `${jd.trim().length.toLocaleString()} characters`}
-            </p>
-          </div>
-
-          <LayoutOptions value={layout} onChange={setLayout} disabled={running} />
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-1.5">
-              <label htmlFor="outname" className="text-sm font-medium">File name for the PDF and LaTeX</label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="outname"
-                  value={outputName}
-                  onChange={(e) => setOutputName(e.target.value)}
-                  placeholder="e.g. Asha_Verma_Backend_Engineer"
-                  disabled={running}
-                />
-                <span className="shrink-0 text-xs text-muted-foreground">.pdf / .tex</span>
-              </div>
-            </div>
-            {running ? (
-              <Button variant="outline" onClick={() => abortRef.current?.abort()}>
-                <Square className="size-4" />
-                Stop
-              </Button>
-            ) : (
-              <Button onClick={run} disabled={!canRun}>
-                <Sparkles className="size-4" />
-                Generate resume
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {(running || steps.length > 0) && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Agent progress</CardTitle>
-            <CardDescription>May take a minute or two. Each rewrite is re-scored.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ol className="space-y-2">
-              {steps.map((s) => (
-                <li key={s.key} className="flex items-start gap-2.5 text-sm">
-                  {s.status === "running" ? (
-                    <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-primary" />
-                  ) : (
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
-                  )}
-                  <span className={cn(s.status === "running" && "text-foreground", s.status === "done" && "text-muted-foreground")}>
-                    {s.message}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </CardContent>
-        </Card>
-      )}
-
-      {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <span>{error}</span>
+          )}
         </div>
-      )}
+
+        {/* Right Column: Tailoring Options & Generation Button */}
+        <div className="space-y-4 lg:col-span-5">
+          <Card className="lg:sticky lg:top-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Tailor options</CardTitle>
+              <CardDescription>File name and document layout presets</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {noLibrary && (
+                <div className="flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+                  <span>Library empty. Add a resume first.</span>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onGoToLibrary}>
+                    Add resumes
+                  </Button>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label htmlFor="outname" className="text-xs font-medium text-foreground">
+                  Resume file name
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="outname"
+                    value={outputName}
+                    onChange={(e) => setOutputName(e.target.value)}
+                    placeholder="e.g. Asha_Verma_Resume"
+                    disabled={running}
+                    className="text-sm"
+                  />
+                  <span className="shrink-0 text-xs text-muted-foreground">.pdf / .tex</span>
+                </div>
+              </div>
+
+              <div className="border-t pt-3">
+                <LayoutOptions value={layout} onChange={setLayout} disabled={running} />
+              </div>
+
+              <div className="border-t pt-3">
+                {running ? (
+                  <Button variant="outline" className="w-full" onClick={() => abortRef.current?.abort()}>
+                    <Square className="mr-2 size-4 text-destructive" />
+                    Stop generation
+                  </Button>
+                ) : (
+                  <Button onClick={run} disabled={!canRun} className="w-full">
+                    <Sparkles className="mr-2 size-4" />
+                    Generate resume
+                  </Button>
+                )}
+                {!canRun && !running && (
+                  <p className="mt-2 text-center text-xs text-muted-foreground">
+                    {noLibrary
+                      ? "Add at least one resume to your library"
+                      : jdTrimmed.length < 80
+                      ? "Paste job description (at least 80 chars) to start"
+                      : ""}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {result && (
         <Card className={cn(result.released ? "border-emerald-500/40" : "border-amber-500/40")}>

@@ -65,17 +65,34 @@ export function AtsCheckPanel() {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="ats-jd" className="text-sm font-medium">
-              Job description <span className="font-normal text-muted-foreground">(optional, enables keyword match)</span>
-            </label>
+            <div className="flex items-center justify-between">
+              <label htmlFor="ats-jd" className="text-sm font-medium">
+                Job description <span className="font-normal text-muted-foreground">(optional, enables keyword match)</span>
+              </label>
+              {jd.trim().length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setJd("")}
+                  className="text-xs text-muted-foreground hover:text-destructive"
+                  disabled={busy}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
             <Textarea
               id="ats-jd"
               value={jd}
               onChange={(e) => setJd(e.target.value)}
               placeholder="Paste a job description to score keyword match…"
-              className="min-h-[120px] text-sm"
+              className="h-[120px] max-h-[180px] resize-y overflow-y-auto font-mono text-xs leading-relaxed sm:text-sm"
               disabled={busy}
             />
+            {jd.trim().length > 0 && (
+              <p className="text-right text-xs text-muted-foreground">
+                {jd.trim().length.toLocaleString()} characters
+              </p>
+            )}
           </div>
 
           <Button onClick={run} disabled={!file || busy}>
