@@ -306,9 +306,10 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
   };
 
   return (
-    <div className="flex h-[calc(100vh-12rem)] flex-col gap-4">
+    // Fills the screen below the app and page headers, so the input is visible without scrolling
+    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[26rem] flex-col gap-4 sm:h-[calc(100dvh-9.5rem)]">
       <Card
-        className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+        className="relative flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0"
         onDragOver={(e) => {
           if (hasFiles(e) && !isStreaming) {
             e.preventDefault();
@@ -332,11 +333,11 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
             Drop images here to ask about them
           </div>
         )}
-        <CardHeader className="space-y-3 border-b border-border/60 pb-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle>{codeMode ? "Study your code" : "Ask your documents"}</CardTitle>
-              <CardDescription>
+        <CardHeader className="flex flex-col gap-2 border-b border-border/60 px-4 py-3 sm:px-6 [.border-b]:pb-3">
+          <div className="flex w-full items-center justify-between gap-3">
+            <div className="min-w-0">
+              <CardTitle className="text-base">{codeMode ? "Study your code" : "Ask your documents"}</CardTitle>
+              <CardDescription className="hidden truncate xl:block">
                 {codeMode
                   ? "Ask anything about an imported repo: architecture, files, flow, bugs. Follow-ups remember the conversation."
                   : "Ask anything about your uploaded documents. Follow-ups remember the conversation."}
@@ -352,7 +353,7 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
               New chat
             </Button>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
             <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
               <span className="shrink-0 text-muted-foreground">
                 {codeMode ? "Project" : "Document"}

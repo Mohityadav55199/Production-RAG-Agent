@@ -193,9 +193,8 @@ export function normalizeHealth(raw: unknown): HealthInfo {
     postgres: normalizeServiceStatus(
       pick(obj, ["postgres"]) ?? services.postgres ?? services.database
     ),
-    backend: normalizeServiceStatus(
-      pick(obj, ["backend"]) ?? services.backend ?? obj.status
-    ),
+    // The health endpoint answered, so the backend itself is up even when a dependency is degraded
+    backend: normalizeServiceStatus(pick(obj, ["backend"]) ?? services.backend ?? "connected"),
     environment: String(
       pick(obj, ["environment", "env"]) ?? process.env.NODE_ENV ?? "development"
     ),

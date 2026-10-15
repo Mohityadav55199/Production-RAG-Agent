@@ -10,10 +10,12 @@ interface StatsCardsProps {
   stats: DashboardStats;
   loading?: boolean;
   error?: string | null;
+  /** One small line instead of three tiles (used beside the chat). */
+  compact?: boolean;
 }
 
 /** Slim one-row summary: documents, chunks and storage. */
-export function StatsCards({ stats, loading, error }: StatsCardsProps) {
+export function StatsCards({ stats, loading, error, compact = false }: StatsCardsProps) {
   const storagePercent = stats.storageLimit
     ? Math.min(100, Math.round((stats.storageUsed / stats.storageLimit) * 100))
     : 0;
@@ -23,6 +25,34 @@ export function StatsCards({ stats, loading, error }: StatsCardsProps) {
       <div className="flex items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
         <AlertCircle className="size-4 shrink-0" />
         <span>{error}</span>
+      </div>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border bg-card px-4 py-2 text-sm">
+        {loading ? (
+          <Skeleton className="h-5 w-48" />
+        ) : (
+          <>
+            <span className="flex items-center gap-1.5">
+              <FileText className="size-3.5 text-blue-600 dark:text-blue-400" />
+              <strong className="font-semibold">{stats.totalDocuments.toLocaleString()}</strong>
+              <span className="text-muted-foreground">documents</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Layers className="size-3.5 text-violet-600 dark:text-violet-400" />
+              <strong className="font-semibold">{stats.totalChunks.toLocaleString()}</strong>
+              <span className="text-muted-foreground">chunks</span>
+            </span>
+            <span className="flex min-w-[8rem] flex-1 items-center gap-1.5" title={`${formatBytes(stats.storageUsed)} of ${formatBytes(stats.storageLimit)}`}>
+              <HardDrive className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-muted-foreground">{storagePercent}%</span>
+              <Progress value={storagePercent} className="h-1.5 flex-1" />
+            </span>
+          </>
+        )}
       </div>
     );
   }
