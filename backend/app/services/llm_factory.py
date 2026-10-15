@@ -22,7 +22,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage
 
 from app.config import get_settings
 from app.utils.logging import get_logger
@@ -203,10 +205,15 @@ async def keep_groq_models_fresh(interval_seconds: float = 6 * 3600) -> None:
         await asyncio.sleep(interval_seconds)
 
 
+def _clean_key(value: str | None) -> str:
+    """A key as pasted into a dashboard: surrounding spaces, newlines and quotes removed."""
+    return (value or "").strip().strip("\"'").strip()
+
+
 def _api_key(provider: str) -> str:
     s = get_settings()
     if provider == "anthropic":
-        return s.ANTHROPIC_API_KEY
+        return _clean_key(s.ANTHROPIC_API_KEY)
     return s.GROQ_API_KEY if provider == "groq" else s.GOOGLE_API_KEY
 
 
@@ -265,6 +272,26 @@ def _primary_choice(requested_provider: str | None, requested_model: str | None)
     return (provider, model) if model else None
 
 
+def describe_llm_error(exc: BaseException) -> str:
+    """The provider's own error message (e.g. "Your credit balance is too low"), without the request details."""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict) and err.get("message"):
+            return f"{err.get('type', type(exc).__name__)}: {err['message']}"
+    return f"{type(exc).__name__}: {str(exc)[:300]}"
+
+
+class _LogClaudeFailures(AsyncCallbackHandler):
+    """Claude handing over to Groq is silent for users, so say why in the server log."""
+
+    async def on_llm_error(self, error: BaseException, **kwargs: Any) -> None:
+        logger.warning("Claude call failed, the next model answers instead: %s", describe_llm_error(error))
+
+
+_claude_failure_logger = _LogClaudeFailures()
+
+
 def _chain_llm(
     chain: list[tuple[str, str]],
     temperature: float,
@@ -292,6 +319,7 @@ def _chain_llm(
             ).with_config(
                 tags=["fallback_llm" if is_fallback else "primary_llm", f"model:{model}"],
                 metadata={"is_fallback": is_fallback, "backup": i > 0, "model": model, "provider": provider},
+                callbacks=[_claude_failure_logger] if provider == "anthropic" else None,
             )
         )
     if len(runnables) == 1:
@@ -346,3 +374,27 @@ def get_vision_llm(streaming: bool = False) -> BaseChatModel:
     if not chain:
         raise ValueError("Questions about images need a Gemini API key (GOOGLE_API_KEY).")
     return _chain_llm(chain, 0.1, streaming=streaming, tag_fallbacks=False)
+
+
+async def check_claude(timeout_seconds: float = 90.0) -> dict:
+    """Admin check: one tiny real request to Claude with the configured key, and what came back."""
+    settings = get_settings()
+    raw, key = settings.ANTHROPIC_API_KEY or "", _api_key("anthropic")
+    result: dict[str, Any] = {"configured": bool(key), "model": settings.CLAUDE_MODEL, "ok": False, "error": None}
+    if not key:
+        result["error"] = "ANTHROPIC_API_KEY is not set on the server."
+        return result
+    if raw != key:
+        result["note"] = "The key had spaces, a line break or quotes around it; they are ignored."
+    if not key.startswith("sk-ant-"):
+        result["error"] = "The key doesn't look like an Anthropic API key (they start with sk-ant-)."
+        return result
+    llm = build_chat_model("anthropic", settings.CLAUDE_MODEL, key, streaming=False, disable_streaming=True)
+    try:
+        reply = await asyncio.wait_for(llm.ainvoke([HumanMessage(content="Reply with the single word OK.")]),
+                                       timeout=timeout_seconds)
+        result["ok"] = True
+        result["reply"] = (reply.text or "")[:40]
+    except Exception as exc:  # noqa: BLE001 - reported to the admin as is
+        result["error"] = describe_llm_error(exc)
+    return result

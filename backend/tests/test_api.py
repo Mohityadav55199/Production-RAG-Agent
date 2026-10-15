@@ -192,6 +192,17 @@ class TestRateLimits:
         assert body["detected_client_ip"] == "9.9.9.9" and body["x_forwarded_for_entries"] == ["1.1.1.1", "9.9.9.9"]
         assert client.get("/admin/network", headers=users["bob"]).status_code == 403
 
+    def test_admin_claude_check_explains_why_claude_is_not_used(self, client, users, monkeypatch):
+        from app.config import get_settings
+
+        monkeypatch.setattr(get_settings(), "ANTHROPIC_API_KEY", "")
+        body = client.get("/admin/claude", headers=users["alice"]).json()
+        assert body["ok"] is False and "not set" in body["error"]
+        monkeypatch.setattr(get_settings(), "ANTHROPIC_API_KEY", ' "gsk_not_anthropic"\n')
+        body = client.get("/admin/claude", headers=users["alice"]).json()
+        assert "sk-ant-" in body["error"] and body["note"]                     # quotes and newline were stripped
+        assert client.get("/admin/claude", headers=users["bob"]).status_code == 403
+
     def test_a_correct_login_resets_the_account_counter(self, client, users):
         for i in range(3):
             client.post("/auth/login", json={"email": "bob@example.com", "password": f"nope nope {i}"})

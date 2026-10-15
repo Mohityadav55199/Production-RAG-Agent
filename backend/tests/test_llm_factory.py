@@ -202,3 +202,19 @@ def test_claude_handing_over_to_groq_is_silent(settings, monkeypatch):
     assert text == "groq answer"
     assert notices == []                          # nothing tells the user
     assert backups == ["openai/gpt-oss-120b"]     # the metrics still record it
+
+
+def test_a_pasted_key_with_spaces_or_quotes_still_works(settings, monkeypatch):
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", ' "sk-ant-test"\n')
+    assert llm_factory._api_key("anthropic") == "sk-ant-test"
+    assert chain_of(llm_factory.get_configured_llm())[0] == CLAUDE
+
+
+def test_provider_error_messages_are_reported_plainly():
+    class ApiError(Exception):
+        body = {"type": "error", "error": {"type": "invalid_request_error",
+                                           "message": "Your credit balance is too low to access the Anthropic API."}}
+
+    assert llm_factory.describe_llm_error(ApiError("400")) == (
+        "invalid_request_error: Your credit balance is too low to access the Anthropic API."
+    )

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { AlertCircle, CheckCircle2, Cpu, Database, Loader2, RefreshCw, Server, Sparkles, XCircle } from "lucide-react";
 import { BACKEND_OVERRIDE_ALLOWED, getApiBase } from "@/lib/api/client";
 import { useHealth } from "@/lib/hooks/use-health";
+import { ClaudeCheck } from "@/components/settings/claude-check";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -104,6 +105,8 @@ export function SettingsPanel() {
             </div>
           ))}
         </dl>
+
+        <ClaudeCheck />
 
         {BACKEND_OVERRIDE_ALLOWED && (
           <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3 text-xs">
