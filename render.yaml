@@ -39,7 +39,7 @@ services:
       - key: QDRANT_COLLECTION
         value: documents
       - key: CORS_ORIGINS
-        value: '["*"]'
+        value: '["https://productionragagent.vercel.app"]'
       # Login: Render generates a random signing secret once and keeps it across deploys
       - key: JWT_SECRET
         generateValue: true
