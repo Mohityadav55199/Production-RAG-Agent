@@ -1,4 +1,4 @@
-"""
+r"""
 Deterministic LaTeX rendering and compilation.
 
 The LLM only produces structured data; this module turns it into LaTeX using a

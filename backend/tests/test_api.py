@@ -1028,7 +1028,7 @@ class TestResumeEditing:
         assert from_pdf["options"]["section_order"][:2] == ["education", "experience"] and from_pdf["notes"]
 
         # A .tex template: only its checked preamble is kept
-        tex = b"\\documentclass[11pt]{article}\n\\usepackage{enumitem}\n\\begin{document}Old\\end{document}"
+        tex = b"\\documentclass[11pt]{article}\n\\usepackage{xcolor}\n\\begin{document}Old\\end{document}"
         r = client.post("/resume/layouts/import", headers=users["alice"], files={"file": ("cv.tex", tex)}, data={"name": "My LaTeX"})
         assert r.status_code == 201, r.text
         latex_layout = r.json()

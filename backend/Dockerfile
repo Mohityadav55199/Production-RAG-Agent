@@ -33,8 +33,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
 
-# Install system dependencies for OCR, healthchecks and LaTeX (resume PDF generation;
-# a minimal TeX Live set - the resume template only uses base/recommended packages)
+# Install system dependencies for OCR, healthchecks and LaTeX (resume PDF generation).
+# The built-in template needs only base/recommended; latex-extra (enumitem, titlesec, fancyhdr, tabularx...)
+# is for users' own .tex templates, which almost always use some of those packages.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     libgl1 \
@@ -42,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-latex-base \
     texlive-latex-recommended \
     texlive-fonts-recommended \
+    texlive-latex-extra \
     lmodern \
     && rm -rf /var/lib/apt/lists/*
 
