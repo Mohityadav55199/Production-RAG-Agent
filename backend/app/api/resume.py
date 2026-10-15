@@ -4,14 +4,16 @@ Resume API.
 Library      POST/GET/DELETE /resume/library        – the user's resumes (the RAG source)
 ATS check    POST /resume/ats-check                 – score any PDF/DOCX, optionally against a JD
 Tailoring    POST /resume/tailor                    – multi-agent run, streamed as SSE
-History      GET  /resume/generations[/{id}]        – past runs
-Downloads    GET  /resume/generations/{id}/pdf|tex  – only when the ATS gate was passed
+History      GET  /resume/generations[/{id}]        – past runs, with the editable draft and review data
+Editing      POST /resume/generations/{id}/rescore           – re-render and re-score an edited draft
+             POST /resume/generations/{id}/regenerate-bullet – grounded alternatives for one bullet
+Downloads    GET  /resume/generations/{id}/pdf|tex  – any compiled draft; the app shows when it is below the gate
 """
 
 import json
 import re
 import uuid
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
@@ -25,8 +27,10 @@ from app.services.auth import CurrentUser, get_current_user
 from app.db.postgres import get_db_session
 from app.db.resume_models import Resume, ResumeGeneration
 from app.services.resume import ats, library
-from app.services.resume.agents import analyze_jd, run_tailoring, score_text
-from app.services.resume.schemas import Profile
+from app.services.resume.agents import analyze_jd, regenerate_bullet, run_tailoring, score_profile, score_text
+from app.services.resume.review import annotate, claims_check, find_item, gap_report
+from app.services.resume.schemas import JDAnalysis, Profile, RenderOptions
+from app.utils.rate_limit import SlidingWindowLimiter
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -89,6 +93,7 @@ def _generation_summary(g: ResumeGeneration) -> dict:
         "threshold": g.threshold,
         "released": g.released,
         "pdf_available": bool(g.pdf),
+        "tex_available": bool(g.tex),
         "attempts": g.attempts,
         "created_at": g.created_at.isoformat() if g.created_at else None,
     }
@@ -234,6 +239,7 @@ class TailorRequest(BaseModel):
     jd_text: str = Field(..., min_length=80, max_length=MAX_JD_CHARS, description="The job description.")
     output_name: str = Field("resume", max_length=100, description="Name for the generated PDF/LaTeX files.")
     resume_ids: list[uuid.UUID] | None = Field(None, description="Library resumes to use; default is all.")
+    options: RenderOptions | None = Field(None, description="Template, font size and margins of the PDF.")
 
 
 _active_runs: set[str] = set()   # users with a tailoring run in progress (one at a time each)
@@ -289,7 +295,8 @@ async def _tailor_run(
         return
 
     try:
-        async for event in run_tailoring(body.jd_text, rows, threshold):
+        options = body.options or RenderOptions()
+        async for event in run_tailoring(body.jd_text, rows, threshold, options=options):
             if await request.is_disconnected():
                 return
             if event["type"] != "final":
@@ -300,10 +307,12 @@ async def _tailor_run(
             best = state["best"]
             jd = state["jd"]
             score = int(best["score"])
-            # Released only when the score passes AND (if a compiler exists) the LaTeX really compiled
-            released = score >= threshold and not best.get("compile_failed", False)
-            pdf = best["pdf"] if released else None
-            tex = best["tex"] if released else None
+            # "Released" means the score passed the gate. A draft that compiled can always be downloaded, because
+            # the app shows when it is below the gate; LaTeX that failed to compile is never handed out.
+            compile_failed = best.get("compile_failed", False)
+            released = score >= threshold and not compile_failed
+            pdf = best["pdf"]
+            tex = None if compile_failed else best["tex"]
 
             generation = ResumeGeneration(
                 id=uuid.uuid4(),
@@ -318,7 +327,11 @@ async def _tailor_run(
                 released=released,
                 pdf_compiled=bool(pdf),
                 breakdown=best["report"],
-                report={"jd": jd, "warnings": best["warnings"], "compile_error": best.get("compile_error", "")},
+                report={
+                    "jd": jd, "warnings": best["warnings"], "compile_error": best.get("compile_error", ""),
+                    "draft": best["draft"], "ai_draft": best["draft"], "options": options.model_dump(),
+                    "resume_ids": [str(r.id) for r in rows],
+                },
                 tex=tex,
                 pdf=pdf,
             )
@@ -336,6 +349,7 @@ async def _tailor_run(
                 "pdf_available": bool(pdf),
                 "pdf_compiled": best["report"].get("pdf_compiled", False),
                 "tex": tex,
+                "tex_available": bool(tex),
                 "report": best["report"],
                 "warnings": best["warnings"],
                 "jd": jd,
@@ -379,35 +393,184 @@ async def _get_generation(generation_id: uuid.UUID, user: CurrentUser) -> Resume
     return row
 
 
-@router.get("/generations/{generation_id}", summary="Details of a run (LaTeX only if the gate was passed)")
-async def get_generation(generation_id: uuid.UUID, user: CurrentUser = Depends(get_current_user)) -> dict:
-    g = await _get_generation(generation_id, user)
-    return {
+async def _library_for(g: ResumeGeneration) -> tuple[Profile | None, str]:
+    """The merged library the run used (or all of the user's resumes), and its raw text. None if it was deleted."""
+    ids = [uuid.UUID(i) for i in (g.report or {}).get("resume_ids", [])]
+    async with get_db_session() as session:
+        query = select(Resume).where(Resume.user_id == g.user_id).order_by(Resume.created_at.desc())
+        if ids:
+            query = query.where(Resume.id.in_(ids))
+        rows = list((await session.execute(query)).scalars().all())
+    if not rows:
+        return None, ""
+    merged = library.merge_profiles([Profile.model_validate(r.profile) for r in rows])
+    return merged, "\n".join(r.raw_text for r in rows)
+
+
+async def _generation_detail(g: ResumeGeneration) -> dict:
+    stored = g.report or {}
+    detail = {
         **_generation_summary(g),
         "report": g.breakdown,
-        "details": g.report,
-        "tex": g.tex if g.released else None,
+        "details": {
+            "jd": stored.get("jd"), "warnings": stored.get("warnings", []),
+            "compile_error": stored.get("compile_error", ""),
+        },
+        "tex": g.tex,
+        "below_threshold": g.ats_score < g.threshold,
+        "editable": bool(stored.get("draft")),
+        "draft": stored.get("draft"),
+        "ai_draft": stored.get("ai_draft"),
+        "options": stored.get("options") or RenderOptions().model_dump(),
+        "annotated": None,
+        "gap": None,
     }
+    if detail["editable"]:
+        library_profile, corpus = await _library_for(g)
+        if library_profile is not None:
+            draft = Profile.model_validate(stored["draft"])
+            detail["annotated"] = annotate(draft, library_profile)
+            if stored.get("jd") and g.breakdown.get("has_jd"):
+                detail["gap"] = gap_report(
+                    draft, library_profile, JDAnalysis.model_validate(stored["jd"]), g.breakdown, corpus
+                )
+    return detail
 
 
-@router.get("/generations/{generation_id}/pdf", summary="Download the PDF (only if the ATS gate was passed)")
+@router.get("/generations/{generation_id}", summary="Details of a run: editable draft, per-bullet sources, gap report")
+async def get_generation(generation_id: uuid.UUID, user: CurrentUser = Depends(get_current_user)) -> dict:
+    return await _generation_detail(await _get_generation(generation_id, user))
+
+
+@router.get("/generations/{generation_id}/pdf", summary="Download the PDF (any draft that compiled)")
 async def download_pdf(generation_id: uuid.UUID, user: CurrentUser = Depends(get_current_user)) -> Response:
     g = await _get_generation(generation_id, user)
-    if not g.released:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, f"ATS score {g.ats_score} is below {g.threshold}; the PDF is not released.")
     if not g.pdf:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No PDF was compiled for this run.")
     return Response(g.pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{g.output_name}.pdf"'})
 
 
-@router.get("/generations/{generation_id}/tex", summary="Download the LaTeX source (only if the ATS gate was passed)")
+@router.get("/generations/{generation_id}/tex", summary="Download the LaTeX source (any draft that compiled)")
 async def download_tex(generation_id: uuid.UUID, user: CurrentUser = Depends(get_current_user)) -> Response:
     g = await _get_generation(generation_id, user)
-    if not g.released or not g.tex:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, f"ATS score {g.ats_score} is below {g.threshold}; the LaTeX is not released.")
+    if not g.tex:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No LaTeX is available for this run.")
     return Response(g.tex, media_type="application/x-tex",
                     headers={"Content-Disposition": f'attachment; filename="{g.output_name}.tex"'})
+
+
+# ── Editing ──────────────────────────────────────────────────────────────────
+
+MAX_ROLES, MAX_PROJECTS, MAX_BULLETS, MAX_BULLET_CHARS = 15, 12, 10, 600
+
+_edit_limiter = SlidingWindowLimiter(limit=get_settings().RESUME_EDITS_PER_HOUR, window_seconds=3600)
+
+
+def _check_edit_budget(user_key: str) -> None:
+    """Re-scoring compiles a PDF and bullet suggestions call the LLM: cap how often one user can do either."""
+    wait = _edit_limiter.retry_after_minutes(user_key)
+    if wait is not None:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Too many edits. Try again in about {wait} minute{'s' if wait != 1 else ''}.",
+        )
+    _edit_limiter.hit(user_key)
+
+
+def _check_draft_size(p: Profile) -> None:
+    too_big = (
+        len(p.experience) > MAX_ROLES or len(p.projects) > MAX_PROJECTS or len(p.summary) > 1200
+        or any(len(r.bullets) > MAX_BULLETS for r in p.experience)
+        or any(len(r.bullets) > MAX_BULLETS for r in p.projects)
+        or any(len(b) > MAX_BULLET_CHARS for r in (*p.experience, *p.projects) for b in r.bullets)
+        or sum(len(v) for v in p.skills.values()) > 120
+    )
+    if too_big:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That draft is too large for a resume.")
+
+
+class RescoreRequest(BaseModel):
+    draft: Profile
+    options: RenderOptions | None = None
+
+
+@router.post("/generations/{generation_id}/rescore", summary="Re-render and re-score an edited draft")
+async def rescore(generation_id: uuid.UUID, body: RescoreRequest, user: CurrentUser = Depends(get_current_user)) -> dict:
+    g = await _get_generation(generation_id, user)
+    stored = g.report or {}
+    if not stored.get("jd") or not g.breakdown.get("has_jd"):
+        raise HTTPException(status.HTTP_409_CONFLICT, "This run has no job description analysis to score against.")
+    _check_draft_size(body.draft)
+    _check_edit_budget(user.key)
+
+    options = body.options or RenderOptions.model_validate(stored.get("options") or {})
+    jd = JDAnalysis.model_validate(stored["jd"])
+    scored = await score_profile(body.draft, options, jd, g.jd_text)
+
+    library_profile, corpus = await _library_for(g)
+    warnings = scored["warnings"]
+    if library_profile is not None:
+        warnings = claims_check(body.draft, library_profile, corpus) + warnings
+
+    score = int(scored["score"])
+    compile_failed = scored["compile_failed"]
+    async with get_db_session() as session:
+        row = await session.get(ResumeGeneration, g.id)
+        row.ats_score = score
+        row.released = score >= row.threshold and not compile_failed
+        row.pdf_compiled = scored["pdf"] is not None
+        row.breakdown = scored["report"]
+        row.tex = None if compile_failed else scored["tex"]
+        row.pdf = scored["pdf"]
+        row.report = {
+            **(row.report or {}), "draft": body.draft.model_dump(), "options": options.model_dump(),
+            "warnings": warnings, "compile_error": scored["compile_error"],
+        }
+    return await _generation_detail(await _get_generation(generation_id, user))
+
+
+class BulletRequest(BaseModel):
+    kind: Literal["experience", "project"]
+    name: str = Field(..., max_length=200, description="Company (experience) or project name.")
+    current: str = Field("", max_length=MAX_BULLET_CHARS, description="The bullet to rewrite; empty asks for a new one.")
+    already_used: list[str] = Field(default_factory=list, max_length=30)
+    instruction: str = Field("", max_length=200)
+
+
+@router.post("/generations/{generation_id}/regenerate-bullet", summary="Grounded alternatives for one bullet")
+async def regenerate_one_bullet(
+    generation_id: uuid.UUID, body: BulletRequest, user: CurrentUser = Depends(get_current_user)
+) -> dict:
+    g = await _get_generation(generation_id, user)
+    stored = g.report or {}
+    library_profile, corpus = await _library_for(g)
+    if not stored.get("jd") or library_profile is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The resumes this run used are no longer in your library.")
+
+    item = (find_item(library_profile.experience, body.name, "company") if body.kind == "experience"
+            else find_item(library_profile.projects, body.name, "name"))
+    if item is None or not item.bullets:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f'"{body.name}" has no source bullets in your library, so nothing can be written for it without inventing facts.',
+        )
+    _check_edit_budget(user.key)
+
+    try:
+        options = await regenerate_bullet(
+            item.bullets, JDAnalysis.model_validate(stored["jd"]), corpus, body.current, body.already_used,
+            body.instruction,
+        )
+    except Exception as exc:
+        logger.warning("Bullet regeneration failed: %s", exc)
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "The AI service is busy. Try again in a moment.") from exc
+    if not options:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "No rewrite stayed within the facts in your library. Try again, add a note, or edit the bullet by hand.",
+        )
+    return {"options": options}
 
 
 @router.delete("/generations/{generation_id}", summary="Delete a run")

@@ -3,7 +3,9 @@ Deterministic LaTeX rendering and compilation.
 
 The LLM only produces structured data; this module turns it into LaTeX using a
 fixed single-column, text-only template (the layout ATS parsers read best).
-All user text is escaped, so model output can never inject LaTeX commands.
+Three templates share that rule and differ only in spacing and section order.
+All user text is escaped, so model output can never inject LaTeX commands, and the
+layout options are whitelisted values (see RenderOptions), never free text.
 Compilation runs without shell escape and with restricted file access.
 """
 
@@ -15,7 +17,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from app.services.resume.schemas import Profile
+from app.services.resume.schemas import Profile, RenderOptions
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -46,8 +48,22 @@ def esc(text: str) -> str:
     return re.sub(r" {2,}", " ", "".join(out)).strip()
 
 
-_PREAMBLE = r"""\documentclass[10pt,letterpaper]{article}
-\usepackage[margin=0.6in]{geometry}
+# Look of each template: space before a section, section title size, gap between bullets, name size.
+_STYLES = {
+    "classic": {"before": "7pt", "title": r"\large", "item": "1pt", "name": r"\LARGE"},
+    "compact": {"before": "4pt", "title": r"\normalsize", "item": "0pt", "name": r"\Large"},
+    "skills_first": {"before": "7pt", "title": r"\large", "item": "1pt", "name": r"\LARGE"},
+}
+
+# Section order per template; every template uses the same standard headings an ATS looks for.
+_ORDERS = {
+    "classic": ["summary", "skills", "experience", "projects", "education", "certifications", "achievements"],
+    "compact": ["summary", "skills", "experience", "projects", "education", "certifications", "achievements"],
+    "skills_first": ["skills", "summary", "experience", "projects", "education", "certifications", "achievements"],
+}
+
+_PREAMBLE = r"""\documentclass[@FONT@pt,letterpaper]{article}
+\usepackage[margin=@MARGIN@in]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{lmodern}
@@ -56,10 +72,21 @@ _PREAMBLE = r"""\documentclass[10pt,letterpaper]{article}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0pt}
 \setlength{\tabcolsep}{0pt}
-\newcommand{\sectionhead}[1]{\vspace{7pt}{\large\bfseries\MakeUppercase{#1}}\par\vspace{-4pt}\rule{\linewidth}{0.4pt}\par\vspace{2pt}}
-\newenvironment{bullets}{\begin{itemize}\setlength{\itemsep}{1pt}\setlength{\parsep}{0pt}\setlength{\topsep}{2pt}\setlength{\leftmargin}{1.3em}}{\end{itemize}}
+\newcommand{\sectionhead}[1]{\vspace{@BEFORE@}{@TITLE@\bfseries\MakeUppercase{#1}}\par\vspace{-4pt}\rule{\linewidth}{0.4pt}\par\vspace{2pt}}
+\newenvironment{bullets}{\begin{itemize}\setlength{\itemsep}{@ITEM@}\setlength{\parsep}{0pt}\setlength{\topsep}{2pt}\setlength{\leftmargin}{1.3em}}{\end{itemize}}
 \begin{document}
 """
+
+
+def _preamble(opts: RenderOptions) -> str:
+    style = _STYLES[opts.template]
+    return (
+        _PREAMBLE.replace("@FONT@", str(opts.font_pt))
+        .replace("@MARGIN@", str(opts.margin_in))
+        .replace("@BEFORE@", style["before"])
+        .replace("@TITLE@", style["title"])
+        .replace("@ITEM@", style["item"])
+    )
 
 
 def _bullets(items: list[str]) -> str:
@@ -81,48 +108,63 @@ def _row(left: str, right: str, bold_left: bool = True, italic: bool = False) ->
     return f"{left}\\hfill {right}\\par\n"
 
 
-def render_latex(p: Profile) -> str:
-    out = [_PREAMBLE]
+def _sections(p: Profile) -> dict[str, str]:
+    """Each section's LaTeX, keyed by name; an empty section is an empty string."""
+    sections: dict[str, str] = {}
+
+    if p.summary:
+        sections["summary"] = "\\sectionhead{Summary}\n" + esc(p.summary) + "\\par\n"
+
+    if p.skills:
+        text = "\\sectionhead{Skills}\n"
+        for group, items in p.skills.items():
+            text += f"\\textbf{{{esc(group)}:}} {esc(', '.join(items))}\\par\n"
+        sections["skills"] = text
+
+    if p.experience:
+        text = "\\sectionhead{Experience}\n"
+        for exp in p.experience:
+            text += "\\vspace{3pt}\n" + _row(exp.company, exp.dates)
+            text += _row(exp.title, exp.location, bold_left=False, italic=True)
+            text += _bullets(exp.bullets)
+        sections["experience"] = text
+
+    if p.projects:
+        text = "\\sectionhead{Projects}\n"
+        for proj in p.projects:
+            title = esc(proj.name) + (f" $|$ {esc(proj.tech)}" if proj.tech else "")
+            text += f"\\vspace{{3pt}}\n\\textbf{{{title}}}\\par\n"
+            text += _bullets(proj.bullets)
+        sections["projects"] = text
+
+    if p.education:
+        text = "\\sectionhead{Education}\n"
+        for edu in p.education:
+            text += _row(edu.school, edu.dates)
+            text += _row(edu.degree, edu.location, bold_left=False, italic=True)
+            if edu.details:
+                text += esc(edu.details) + "\\par\n"
+        sections["education"] = text
+
+    if p.certifications:
+        sections["certifications"] = "\\sectionhead{Certifications}\n" + _bullets(p.certifications)
+    if p.achievements:
+        sections["achievements"] = "\\sectionhead{Achievements}\n" + _bullets(p.achievements)
+    return sections
+
+
+def render_latex(p: Profile, options: RenderOptions | None = None) -> str:
+    opts = options or RenderOptions()
+    style = _STYLES[opts.template]
+    out = [_preamble(opts)]
 
     contact = [esc(x) for x in (p.location, p.phone, p.email) if esc(x)]
     contact += [esc(l.replace("https://", "").replace("http://", "")) for l in p.links[:3]]
-    out.append(f"\\begin{{center}}\n{{\\LARGE\\bfseries {esc(p.name) or 'Your Name'}}}\\\\[3pt]\n")
+    out.append(f"\\begin{{center}}\n{{{style['name']}\\bfseries {esc(p.name) or 'Your Name'}}}\\\\[3pt]\n")
     out.append(" $|$ ".join(contact) + "\n\\end{center}\n\\vspace{-8pt}\n")
 
-    if p.summary:
-        out.append("\\sectionhead{Summary}\n" + esc(p.summary) + "\\par\n")
-
-    if p.skills:
-        out.append("\\sectionhead{Skills}\n")
-        for group, items in p.skills.items():
-            out.append(f"\\textbf{{{esc(group)}:}} {esc(', '.join(items))}\\par\n")
-
-    if p.experience:
-        out.append("\\sectionhead{Experience}\n")
-        for exp in p.experience:
-            out.append("\\vspace{3pt}\n" + _row(exp.company, exp.dates))
-            out.append(_row(exp.title, exp.location, bold_left=False, italic=True))
-            out.append(_bullets(exp.bullets))
-
-    if p.projects:
-        out.append("\\sectionhead{Projects}\n")
-        for proj in p.projects:
-            title = esc(proj.name) + (f" $|$ {esc(proj.tech)}" if proj.tech else "")
-            out.append(f"\\vspace{{3pt}}\n\\textbf{{{title}}}\\par\n")
-            out.append(_bullets(proj.bullets))
-
-    if p.education:
-        out.append("\\sectionhead{Education}\n")
-        for edu in p.education:
-            out.append(_row(edu.school, edu.dates))
-            out.append(_row(edu.degree, edu.location, bold_left=False, italic=True))
-            if edu.details:
-                out.append(esc(edu.details) + "\\par\n")
-
-    if p.certifications:
-        out.append("\\sectionhead{Certifications}\n" + _bullets(p.certifications))
-    if p.achievements:
-        out.append("\\sectionhead{Achievements}\n" + _bullets(p.achievements))
+    sections = _sections(p)
+    out.extend(sections[name] for name in _ORDERS[opts.template] if name in sections)
 
     out.append("\\end{document}\n")
     return "".join(out)

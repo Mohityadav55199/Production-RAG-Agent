@@ -34,7 +34,7 @@ from app.services.resume.latex import (
     unsupported_characters,
 )
 from app.services.resume.llm_utils import llm_json
-from app.services.resume.schemas import Education, Experience, JDAnalysis, Profile, Project
+from app.services.resume.schemas import Education, Experience, JDAnalysis, Profile, Project, RenderOptions
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -99,6 +99,7 @@ class TailorState(TypedDict, total=False):
     report: dict
     best: dict
     done: bool
+    options: dict
 
 
 def _emit(config: RunnableConfig, event: dict) -> None:
@@ -358,13 +359,11 @@ async def score_text(
     return ats.build_report(text, jd, meta, fit, plain_bullets)
 
 
-async def node_score(state: TailorState, config: RunnableConfig) -> dict:
-    attempt = state["attempt"]
-    _emit(config, {"type": "step", "step": "score", "status": "running", "attempt": attempt,
-                   "message": "Compiling the PDF and computing the ATS score"})
-    jd = JDAnalysis.model_validate(state["jd"])
-    profile = Profile.model_validate(state["draft"])
-    tex = render_latex(profile)
+async def score_profile(
+    profile: Profile, options: RenderOptions | None, jd: JDAnalysis, jd_text: str, with_fit: bool = True
+) -> dict:
+    """Render, compile and ATS-score a profile. Used for every writer draft and again after the user edits one."""
+    tex = render_latex(profile, options)
 
     pdf, compile_error = (None, "")
     if compiler_available():
@@ -372,16 +371,16 @@ async def node_score(state: TailorState, config: RunnableConfig) -> dict:
 
     if pdf:
         text, meta = await asyncio.to_thread(ats.pdf_text_and_meta, pdf)
-        report = await score_text(text, jd, state["jd_text"], meta)
+        report = await score_text(text, jd, jd_text, meta, with_fit=with_fit)
     else:
         text = profile_plain_text(profile)
-        report = await score_text(text, jd, state["jd_text"], None)
+        report = await score_text(text, jd, jd_text, None, with_fit=with_fit)
 
     result = report.to_dict()
     result["pdf_compiled"] = pdf is not None
     # The compiler exists but the LaTeX failed: never hand out code that doesn't compile
     compile_failed = compiler_available() and pdf is None
-    warnings = list(state.get("warnings", []))
+    warnings: list[str] = []
     if compile_failed:
         first_line = next((ln for ln in compile_error.splitlines() if ln.startswith("!")), compile_error[:120])
         warnings.append(f"The LaTeX could not be compiled, so this result is not released ({first_line.strip()}).")
@@ -390,22 +389,98 @@ async def node_score(state: TailorState, config: RunnableConfig) -> dict:
         warnings.append(
             "These characters cannot be shown by the LaTeX template and were left out: " + " ".join(dropped[:12])
         )
+    return {
+        "score": report.total, "tex": tex, "pdf": pdf, "report": result, "warnings": warnings,
+        "compile_error": compile_error, "compile_failed": compile_failed,
+    }
+
+
+async def node_score(state: TailorState, config: RunnableConfig) -> dict:
+    attempt = state["attempt"]
+    _emit(config, {"type": "step", "step": "score", "status": "running", "attempt": attempt,
+                   "message": "Compiling the PDF and computing the ATS score"})
+    jd = JDAnalysis.model_validate(state["jd"])
+    profile = Profile.model_validate(state["draft"])
+    options = RenderOptions.model_validate(state["options"]) if state.get("options") else None
+    scored = await score_profile(profile, options, jd, state["jd_text"])
+
+    report, pdf, tex = scored["report"], scored["pdf"], scored["tex"]
+    warnings = list(state.get("warnings", [])) + scored["warnings"]
     best = state.get("best") or {}
     candidate = {
-        "score": report.total, "draft": state["draft"], "tex": tex, "pdf": pdf, "report": result,
-        "warnings": warnings, "attempt": attempt, "compile_error": compile_error,
-        "compile_failed": compile_failed,
+        "score": scored["score"], "draft": state["draft"], "tex": tex, "pdf": pdf, "report": report,
+        "warnings": warnings, "attempt": attempt, "compile_error": scored["compile_error"],
+        "compile_failed": scored["compile_failed"],
     }
-    if report.total >= best.get("score", -1):
+    if scored["score"] >= best.get("score", -1):
         best = candidate
 
     _emit(config, {
-        "type": "step", "step": "score", "status": "done", "attempt": attempt, "score": report.total,
-        "message": f"ATS score {report.total} (needs {state['threshold']})",
-        "components": [{"label": c.label, "score": c.score} for c in report.components],
+        "type": "step", "step": "score", "status": "done", "attempt": attempt, "score": scored["score"],
+        "message": f"ATS score {scored['score']} (needs {state['threshold']})",
+        "components": [{"label": c["label"], "score": c["score"]} for c in report["components"]],
     })
-    return {"tex": tex, "pdf": pdf, "pdf_compiled": pdf is not None, "compile_error": compile_error,
-            "report": result, "best": best}
+    return {"tex": tex, "pdf": pdf, "pdf_compiled": pdf is not None, "compile_error": scored["compile_error"],
+            "report": report, "best": best}
+
+
+_BULLET_PROMPT = """You rewrite resume bullets for one job. You are given the SOURCE BULLETS of a single role or project from the
+candidate's own library.
+
+RULES (breaking any is a failure):
+1. Use ONLY facts in the SOURCE BULLETS. Never add tools, skills, numbers, results or scope that are not there.
+2. Keep every number exactly as written. Do not round, scale or invent metrics.
+3. One line each, starting with a strong past-tense verb, 12-30 words.
+4. Use the job's wording for a skill ONLY if a source bullet shows the candidate really used it.
+5. Give three genuinely different options (different emphasis or phrasing).
+6. If a USER NOTE is given, follow it as long as it does not break rules 1-2.
+
+Return JSON: {"options": ["", "", ""]}"""
+
+
+def option_is_grounded(text: str, corpus: str, jd: JDAnalysis) -> bool:
+    """A rewritten bullet may not add numbers or job-description skills the library never mentions."""
+    if not _numbers_grounded(text, {_num_key(n) for n in _numbers(corpus)}):
+        return False
+    jd_terms = list(dict.fromkeys(jd.must_have + jd.nice_to_have))
+    return not any(ats.term_in_text(t, text) and not ats.term_in_text(t, corpus) for t in jd_terms)
+
+
+async def regenerate_bullet(
+    sources: list[str], jd: JDAnalysis, corpus: str, current: str = "", already_used: list[str] | None = None,
+    instruction: str = "",
+) -> list[dict]:
+    """Up to three grounded alternatives for one bullet (or a new bullet when *current* is empty)."""
+    lines = [
+        f"TARGET ROLE: {jd.title or 'n/a'}",
+        f"REQUIRED: {', '.join(jd.must_have)}",
+        f"PREFERRED: {', '.join(jd.nice_to_have)}",
+        "",
+        "SOURCE BULLETS:",
+        *(f"- {b}" for b in sources),
+        "",
+    ]
+    if current:
+        lines += ["BULLET TO REWRITE:", current, ""]
+    else:
+        lines += ["Write NEW bullets that highlight different facts from the sources than the ones already used.", ""]
+    if already_used:
+        lines += ["ALREADY IN THE RESUME (do not repeat):", *(f"- {b}" for b in already_used), ""]
+    if instruction.strip():
+        lines.append(f"USER NOTE: {instruction.strip()[:200]}")
+    user = "\n".join(lines)
+
+    data = await llm_json(_BULLET_PROMPT, user)
+    seen, out = set(), []
+    for raw in data.get("options", []) if isinstance(data.get("options"), list) else []:
+        text = re.sub(r"\s+", " ", str(raw or "")).strip().lstrip("-* ").strip()
+        if not text or len(text) > 400 or _norm(text) in seen or _norm(text) == _norm(current):
+            continue
+        if not option_is_grounded(text, corpus, jd):
+            continue
+        seen.add(_norm(text))
+        out.append({"text": text, "source": _closest(text, sources)})
+    return out[:3]
 
 
 def route_after_score(state: TailorState) -> str:
@@ -469,6 +544,7 @@ async def run_tailoring(
     resume_rows: list[Any],
     threshold: int,
     max_attempts: int = 3,
+    options: RenderOptions | None = None,
 ) -> AsyncGenerator[dict, None]:
     """Run the graph, yielding progress events; the last event is {"type": "final", "state": {...}}.
     A heartbeat is sent every 10s so proxies don't close the idle stream."""
@@ -485,6 +561,7 @@ async def run_tailoring(
         "merged": merged.model_dump(),
         "threshold": threshold,
         "max_attempts": max_attempts,
+        "options": (options or RenderOptions()).model_dump(),
     }
 
     async def worker():

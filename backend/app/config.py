@@ -160,6 +160,7 @@ class Settings(BaseSettings):
     ALLOW_SIGNUP: bool = True               # set false to close registration
     QUERY_DAILY_LIMIT: int = 100            # chat questions per user per 24h (0 = unlimited); the admin is exempt
     UPLOAD_DAILY_LIMIT: int = 50            # files uploaded per user per 24h (0 = unlimited); the admin is exempt
+    RESUME_EDITS_PER_HOUR: int = 60         # re-scores and bullet rewrites per user per hour (each compiles or calls the LLM)
     RESUME_DAILY_LIMIT: int = 20           # tailoring runs per user per 24h (protects the shared LLM quota)
 
     # ── Images ────────────────────────────────────────────────────────────────

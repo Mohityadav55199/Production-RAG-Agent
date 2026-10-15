@@ -403,11 +403,12 @@ class TestResumeIsolationAndGate:
         client.delete(f"/resume/generations/{gid}", headers=users["bob"])           # must not delete Alice's run
         assert client.get(f"/resume/generations/{gid}/tex", headers=users["alice"]).text == "TEX"
 
-    def test_released_files_download_but_withheld_ones_never_do(self, client, users, seeded):
+    def test_a_run_with_no_compiled_file_has_nothing_to_download(self, client, users, seeded):
         low = seeded["withheld"]
-        assert client.get(f"/resume/generations/{low}/tex", headers=users["alice"]).status_code == 403
-        assert client.get(f"/resume/generations/{low}/pdf", headers=users["alice"]).status_code == 403
-        assert client.get(f"/resume/generations/{low}", headers=users["alice"]).json()["tex"] is None
+        assert client.get(f"/resume/generations/{low}/tex", headers=users["alice"]).status_code == 404
+        assert client.get(f"/resume/generations/{low}/pdf", headers=users["alice"]).status_code == 404
+        detail = client.get(f"/resume/generations/{low}", headers=users["alice"]).json()
+        assert detail["tex"] is None and detail["below_threshold"] is True and detail["editable"] is False
 
     def test_one_tailoring_run_at_a_time_per_user(self, client, users):
         from app.api import resume as resume_api
@@ -608,3 +609,105 @@ class TestUploads:
         projects = client.get("/documents?kind=projects&limit=100", headers=users["alice"]).json()["documents"]
         assert all("/" not in d["filename"] for d in docs)
         assert projects and all("/" in d["filename"] for d in projects)
+
+
+class TestResumeEditing:
+    """The editable draft: review data, downloads below the gate, re-scoring and bullet suggestions."""
+
+    JD = {"title": "Backend Engineer", "company": "Initech", "seniority": "mid",
+          "must_have": ["Python", "FastAPI", "Kubernetes"], "nice_to_have": ["React"], "responsibilities": []}
+
+    @pytest.fixture(scope="class")
+    def seeded(self, client, users):
+        import json
+
+        from tests.sample_data import LIBRARY_CORPUS, LIBRARY_PROFILE
+
+        resume, gen = uuid.uuid4(), uuid.uuid4()
+        run_sql("""INSERT INTO resumes (id, user_id, label, file_type, raw_text, profile, index_status, item_count, created_at)
+                   VALUES ($1, $2, 'Asha', 'text', $3, $4::jsonb, 'ready', 0, now())""",
+                resume, users["alice_id"], LIBRARY_CORPUS, json.dumps(LIBRARY_PROFILE))
+        stored = {"jd": self.JD, "warnings": [], "compile_error": "", "draft": LIBRARY_PROFILE,
+                  "ai_draft": LIBRARY_PROFILE, "options": {"template": "classic", "font_pt": 10, "margin_in": 0.6},
+                  "resume_ids": [str(resume)]}
+        breakdown = {"total": 70, "has_jd": True, "pdf_checked": False, "matched": [], "fixes": [],
+                     "missing_must": ["Kubernetes"], "missing_nice": [],
+                     "components": [{"key": "keywords", "label": "Keyword match", "score": 60, "weight": 50,
+                                     "details": "", "findings": []}]}
+        run_sql("""INSERT INTO resume_generations (id, user_id, output_name, jd_text, ats_score, threshold, attempts,
+                   released, pdf_compiled, breakdown, report, tex, pdf, created_at)
+                   VALUES ($1, $2, 'asha_cv', 'jd text', 70, 82, 3, false, true, $3::jsonb, $4::jsonb, 'LOWTEX', $5, now())""",
+                gen, users["alice_id"], json.dumps(breakdown), json.dumps(stored), b"%PDF-below-gate")
+        return {"gen": gen, "profile": LIBRARY_PROFILE}
+
+    def test_detail_carries_the_draft_sources_and_gap_report(self, client, users, seeded):
+        d = client.get(f"/resume/generations/{seeded['gen']}", headers=users["alice"]).json()
+        assert d["editable"] and d["below_threshold"] and d["tex"] == "LOWTEX"
+        assert d["draft"]["name"] == "Asha Verma" and d["ai_draft"] == d["draft"]
+        assert d["options"]["template"] == "classic"
+        assert {b["status"] for b in d["annotated"]["experience"][0]["bullets"]} == {"original"}
+        assert d["gap"]["lacking_must"] == ["Kubernetes"]
+        assert d["gap"]["score"] <= d["gap"]["with_lacking_score"] <= 100
+
+    def test_a_draft_below_the_gate_downloads_like_any_other(self, client, users, seeded):
+        r = client.get(f"/resume/generations/{seeded['gen']}/pdf", headers=users["alice"])
+        assert r.status_code == 200 and r.content == b"%PDF-below-gate"
+        assert client.get(f"/resume/generations/{seeded['gen']}/tex", headers=users["alice"]).text == "LOWTEX"
+
+    def test_editing_endpoints_are_private(self, client, users, seeded):
+        gid = seeded["gen"]
+        assert client.get(f"/resume/generations/{gid}", headers=users["bob"]).status_code == 404
+        assert client.post(f"/resume/generations/{gid}/rescore", headers=users["bob"],
+                           json={"draft": seeded["profile"]}).status_code == 404
+        assert client.post(f"/resume/generations/{gid}/regenerate-bullet", headers=users["bob"],
+                           json={"kind": "experience", "name": "Acme"}).status_code == 404
+
+    def test_rescore_saves_the_edit_and_the_new_score(self, client, users, seeded, monkeypatch):
+        from app.api import resume as resume_api
+
+        captured = {}
+
+        async def fake_score(profile, options, jd, jd_text, with_fit=True):
+            captured["bullets"], captured["template"] = profile.experience[0].bullets, options.template
+            return {"score": 90, "tex": "NEWTEX", "pdf": b"%PDF-new", "warnings": [], "compile_error": "",
+                    "compile_failed": False,
+                    "report": {"total": 90, "has_jd": True, "pdf_checked": True, "matched": ["Python"], "fixes": [],
+                               "missing_must": [], "missing_nice": [], "components": []}}
+
+        monkeypatch.setattr(resume_api, "score_profile", fake_score)
+        draft = {**seeded["profile"]}
+        draft["experience"] = [{**draft["experience"][0], "bullets": [
+            "Built REST APIs with FastAPI serving 50k requests/day and cutting latency by 35%."]}]
+        r = client.post(f"/resume/generations/{seeded['gen']}/rescore", headers=users["alice"],
+                        json={"draft": draft, "options": {"template": "compact", "font_pt": 11, "margin_in": 0.5}})
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["ats_score"] == 90 and d["released"] is True and d["below_threshold"] is False
+        assert d["tex"] == "NEWTEX" and d["options"]["template"] == "compact" and captured["template"] == "compact"
+        assert len(captured["bullets"]) == 1 and d["draft"]["experience"][0]["bullets"] == captured["bullets"]
+        assert len(d["ai_draft"]["experience"][0]["bullets"]) == 4                  # the AI's original is kept
+        assert client.get(f"/resume/generations/{seeded['gen']}/pdf", headers=users["alice"]).content == b"%PDF-new"
+
+    def test_rescore_rejects_an_oversized_draft(self, client, users, seeded):
+        draft = {**seeded["profile"]}
+        draft["experience"] = [{**draft["experience"][0], "bullets": ["x"] * 11}]
+        r = client.post(f"/resume/generations/{seeded['gen']}/rescore", headers=users["alice"], json={"draft": draft})
+        assert r.status_code == 422
+
+    def test_regenerate_returns_options_and_refuses_unknown_items(self, client, users, seeded, monkeypatch):
+        from app.api import resume as resume_api
+
+        seen = {}
+
+        async def fake_regen(sources, jd, corpus, current="", already_used=None, instruction=""):
+            seen.update(sources=sources, current=current, instruction=instruction)
+            return [{"text": "Built FastAPI APIs.", "source": sources[0]}]
+
+        monkeypatch.setattr(resume_api, "regenerate_bullet", fake_regen)
+        ok = client.post(f"/resume/generations/{seeded['gen']}/regenerate-bullet", headers=users["alice"],
+                         json={"kind": "experience", "name": "Acme", "current": "old", "instruction": "shorter"})
+        assert ok.status_code == 200 and ok.json()["options"][0]["text"] == "Built FastAPI APIs."
+        assert seen["sources"] == seeded["profile"]["experience"][0]["bullets"] and seen["instruction"] == "shorter"
+        nope = client.post(f"/resume/generations/{seeded['gen']}/regenerate-bullet", headers=users["alice"],
+                           json={"kind": "experience", "name": "Globex"})
+        assert nope.status_code == 422 and "without inventing facts" in nope.json()["detail"]
