@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     RETRIEVAL_TOP_K: int = 5                # default chunks to retrieve per query
     RETRIEVAL_MIN_SCORE: float = 0.63        # minimum cosine similarity score threshold
     RETRIEVAL_MAX_GAP: float = 0.05          # maximum score difference from top score to keep a candidate
+    QUERY_REWRITE_ENABLED: bool = True       # rewrite follow-up questions into standalone search queries
+    QUERY_REWRITE_MODEL: str = "llama-3.1-8b-instant"   # small, fast Groq model for that rewrite
     MAX_HISTORY_PAIRS: int = 3             # conversation turns kept in context window
 
     # ── Embedding Resiliency ──────────────────────────────────────────────────

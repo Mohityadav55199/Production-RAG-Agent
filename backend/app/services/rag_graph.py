@@ -30,6 +30,7 @@ from app.config import get_settings
 from app.schemas.query import SourceCitation
 from app.services.asset_service import images_for_sources
 from app.services.conversation_service import save_turn
+from app.services.query_rewriter import condense_question
 from app.services.retrieval_service import RetrievedChunk, fetch_document_chunks, retrieve_chunks
 from app.services.scope_service import resolve_scope
 from app.services.vision import image_content, vision_available, vision_chat_model
@@ -199,8 +200,11 @@ async def _retrieve_node(state: RAGState) -> dict:
     )
     style = state.get("answer_style") or "detailed"
 
+    # Follow-ups are searched in their standalone form; the answer prompt still gets the user's own words
+    search_query = await condense_question(state["query"], state["history_messages"])
+
     chunks = await retrieve_chunks(
-        query=state["query"],
+        query=search_query,
         top_k=state["top_k"],
         document_ids=scope.document_ids,
         **_RETRIEVAL_BY_STYLE.get(style, _RETRIEVAL_BY_STYLE["detailed"]),
@@ -219,7 +223,7 @@ async def _retrieve_node(state: RAGState) -> dict:
     logger.info(
         "retrieve_node: %d chunks for query=%r scope=%s style=%s",
         len(chunks),
-        state["query"][:80],
+        search_query[:80],
         scope.label,
         style,
     )
@@ -430,6 +434,8 @@ async def stream_rag(
 
             # ── LLM token streaming ────────────────────────────────────────────
             elif kind == "on_chat_model_stream":
+                if event.get("metadata", {}).get("langgraph_node") != "generate":
+                    continue
                 chunk = event["data"].get("chunk")
                 if chunk is None:
                     continue

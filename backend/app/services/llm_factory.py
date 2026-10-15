@@ -25,6 +25,7 @@ def build_chat_model(
     api_key: str | None = None,
     temperature: float = 0.1,
     streaming: bool = True,
+    disable_streaming: bool = False,
 ) -> BaseChatModel:
     """
     Instantiate a chat model dynamically by provider name and model identifier.
@@ -40,6 +41,7 @@ def build_chat_model(
             groq_api_key=api_key or None,
             temperature=temperature,
             streaming=streaming,
+            disable_streaming=disable_streaming,
             max_retries=2,
         )
 
@@ -52,6 +54,7 @@ def build_chat_model(
             temperature=temperature,
             streaming=streaming,
             convert_system_message_to_human=False,
+            disable_streaming=disable_streaming,
             max_retries=2,
         )
 
