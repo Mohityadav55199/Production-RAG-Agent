@@ -158,7 +158,9 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str = ""
     ADMIN_PASSWORD: str = ""
     ALLOW_SIGNUP: bool = True               # set false to close registration
-    RESUME_DAILY_LIMIT: int = 20            # tailoring runs per user per 24h (protects the shared LLM quota)
+    QUERY_DAILY_LIMIT: int = 100            # chat questions per user per 24h (0 = unlimited); the admin is exempt
+    UPLOAD_DAILY_LIMIT: int = 50            # files uploaded per user per 24h (0 = unlimited); the admin is exempt
+    RESUME_DAILY_LIMIT: int = 20           # tailoring runs per user per 24h (protects the shared LLM quota)
 
     # ── Images ────────────────────────────────────────────────────────────────
     CHAT_MAX_IMAGES: int = 3                 # images attached to one chat question

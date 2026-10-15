@@ -48,6 +48,7 @@ from fastapi.responses import StreamingResponse
 
 from app.schemas.query import QueryRequest, SSEThinking
 from app.services.auth import CurrentUser, get_current_user
+from app.services.quota import enforce_daily_quota
 from app.services.vision import ImageError, QuotaError, check_vision_quota, decode_chat_image, vision_available
 from app.services.conversation_service import get_or_create_conversation, load_history
 from app.services.rag_graph import stream_rag
@@ -173,6 +174,8 @@ async def query_endpoint(
     request: Request,
     user: CurrentUser = Depends(get_current_user),
 ) -> StreamingResponse:
+    await enforce_daily_quota(user, "questions")
+
     # Validate attachments up front so a bad image is a clear HTTP error, not a failure mid-stream
     images: list[bytes] = []
     if body.images:

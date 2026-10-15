@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from app.config import get_settings
 from app.schemas.document import UploadResponse
 from app.services.auth import CurrentUser, get_current_user
+from app.services.quota import enforce_daily_quota
 from app.services.document_service import queue_uploads
 from app.utils.file_utils import validate_document_upload
 from app.utils.logging import get_logger
@@ -49,6 +50,7 @@ async def upload_documents(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one file must be provided.",
         )
+    await enforce_daily_quota(user, "uploads", adding=len(files))
 
     if len(files) > settings.MAX_FILES_PER_UPLOAD:
         raise HTTPException(
