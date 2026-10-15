@@ -21,6 +21,7 @@ import asyncio
 import difflib
 import hashlib
 import re
+from collections import OrderedDict
 from typing import Any, AsyncGenerator, TypedDict
 
 from langchain_core.runnables import RunnableConfig
@@ -34,6 +35,7 @@ from app.services.resume.latex import (
     render_latex,
     unsupported_characters,
 )
+from app.services.resume import grounding
 from app.services.resume.llm_utils import llm_json
 from app.services.resume.schemas import Education, Experience, JDAnalysis, Profile, Project, RenderOptions
 from app.utils.errors import client_error_message
@@ -45,7 +47,9 @@ MAX_ROLE_BULLETS = 5
 MAX_PROJECTS = 4
 MAX_PROJECT_BULLETS = 3
 
-_JD_CACHE: dict[str, JDAnalysis] = {}
+# LLM analyses of recently pasted job descriptions (bounded: the server has little memory)
+_JD_CACHE: "OrderedDict[str, JDAnalysis]" = OrderedDict()
+_JD_CACHE_SIZE = 200
 
 
 def clear_jd_cache() -> None:
@@ -131,10 +135,6 @@ def _num_key(n: str) -> str:
     return re.sub(r"\s+", "", n)
 
 
-def _numbers_grounded(text: str, corpus_numbers: set[str]) -> bool:
-    return all(_num_key(n) in corpus_numbers for n in _numbers(text))
-
-
 def _fuzzy_get(items: dict, name: str):
     """Find the library item a (possibly slightly renamed) draft item refers to."""
     key = _norm(name)
@@ -164,12 +164,17 @@ def _closest(bullet: str, originals: list[str]) -> str | None:
     return best
 
 
-def ground_profile(draft: Profile, merged: Profile, corpus: str) -> tuple[Profile, list[str]]:
+def ground_profile(
+    draft: Profile, merged: Profile, corpus: str, jd: JDAnalysis | None = None,
+) -> tuple[Profile, list[str]]:
     """Force the draft to be a subset of the library: identity, roles, schools and skills come from
-    the library; skills/numbers the library doesn't support are removed or reverted."""
+    the library; summary and bullets that claim numbers, skills or employers the library doesn't
+    support are reverted to the candidate's own wording."""
     warnings: list[str] = []
-    corpus_numbers = {_num_key(n) for n in _numbers(corpus)}
     pool = {s.lower() for skills in merged.skills.values() for s in skills}
+
+    def claims(text: str) -> list[str]:
+        return grounding.unsupported_claims(text, corpus, jd)
 
     out = Profile(
         name=merged.name, email=merged.email, phone=merged.phone, location=merged.location,
@@ -179,8 +184,10 @@ def ground_profile(draft: Profile, merged: Profile, corpus: str) -> tuple[Profil
 
     # Summary
     summary = draft.summary.strip()
-    if summary and not _numbers_grounded(summary, corpus_numbers):
-        warnings.append("Summary contained numbers not found in your library; used your original summary.")
+    if summary and (bad := claims(summary)):
+        warnings.append(
+            f"Summary mentioned things not in your library ({', '.join(bad[:4])}); used your original summary."
+        )
         summary = merged.summary
     out.summary = summary or merged.summary
 
@@ -207,9 +214,12 @@ def ground_profile(draft: Profile, merged: Profile, corpus: str) -> tuple[Profil
         originals = role.bullets
         bullets: list[str] = []
         for b in (match.bullets if match else []):
-            if not _numbers_grounded(b, corpus_numbers):
+            if bad := claims(b):
                 fix = _closest(b, originals)
-                warnings.append(f"A bullet at {role.company} had unsupported numbers; reverted to your original wording.")
+                warnings.append(
+                    f"A bullet at {role.company} mentioned things not in your library ({', '.join(bad[:3])}); "
+                    "reverted to your original wording."
+                )
                 b = fix or ""
             if b and b not in bullets:
                 bullets.append(b)
@@ -230,7 +240,11 @@ def ground_profile(draft: Profile, merged: Profile, corpus: str) -> tuple[Profil
         originals = lib.bullets
         bullets = []
         for b in proj.bullets:
-            if not _numbers_grounded(b, corpus_numbers):
+            if bad := claims(b):
+                warnings.append(
+                    f"A bullet in project '{lib.name}' mentioned things not in your library ({', '.join(bad[:3])}); "
+                    "reverted to your original wording."
+                )
                 b = _closest(b, originals) or ""
             if b and b not in bullets:
                 bullets.append(b)
@@ -248,14 +262,17 @@ async def analyze_jd(jd_text: str) -> JDAnalysis:
     jd_key = hashlib.sha256(jd_text.strip().encode("utf-8")).hexdigest()
     if jd_key in _JD_CACHE:
         logger.info("Reusing cached JD analysis for repeated paste")
-        return _JD_CACHE[jd_key]
+        _JD_CACHE.move_to_end(jd_key)
+        return _JD_CACHE[jd_key].model_copy(deep=True)   # callers may modify their copy
 
+    from_llm = True
     try:
         data = await llm_json(_JD_PROMPT, f"Job description:\n\n{jd_text[:8000]}")
         jd = JDAnalysis.model_validate(data)
     except Exception as exc:
         logger.warning("LLM JD analysis failed (%s); using keyword fallback", exc)
         jd = ats.fallback_jd_analysis(jd_text)
+        from_llm = False
     # Make sure well-known tech terms present in the JD are never ignored
     known = {t.lower() for t in jd.must_have + jd.nice_to_have}
     for term in ats.TECH_TERMS:
@@ -263,7 +280,11 @@ async def analyze_jd(jd_text: str) -> JDAnalysis:
             jd.nice_to_have.append(term)
     if not (jd.must_have or jd.nice_to_have):
         raise ValueError("Could not find any skills or requirements in the job description. Paste the full JD.")
-    _JD_CACHE[jd_key] = jd
+    # Only the LLM's analysis is kept: after a failure, the next paste of this JD tries the LLM again
+    if from_llm:
+        _JD_CACHE[jd_key] = jd.model_copy(deep=True)
+        if len(_JD_CACHE) > _JD_CACHE_SIZE:
+            _JD_CACHE.popitem(last=False)
     return jd
 
 
@@ -351,7 +372,7 @@ async def node_write(state: TailorState, config: RunnableConfig) -> dict:
 
     data = await llm_json(system, user)
     merged = Profile.model_validate(state["merged"])
-    draft, warnings = ground_profile(Profile.model_validate(data), merged, state["corpus"])
+    draft, warnings = ground_profile(Profile.model_validate(data), merged, state["corpus"], jd)
     _emit(config, {"type": "step", "step": "write", "status": "done", "attempt": attempt,
                    "message": f"Draft {attempt} written and checked against your library"})
     return {"draft": draft.model_dump(), "warnings": warnings, "attempt": attempt}
@@ -458,11 +479,8 @@ Return JSON: {"options": ["", "", ""]}"""
 
 
 def option_is_grounded(text: str, corpus: str, jd: JDAnalysis) -> bool:
-    """A rewritten bullet may not add numbers or job-description skills the library never mentions."""
-    if not _numbers_grounded(text, {_num_key(n) for n in _numbers(corpus)}):
-        return False
-    jd_terms = list(dict.fromkeys(jd.must_have + jd.nice_to_have))
-    return not any(ats.term_in_text(t, text) and not ats.term_in_text(t, corpus) for t in jd_terms)
+    """A rewritten bullet may not add numbers, skills or employers the library never mentions."""
+    return grounding.is_supported(text, corpus, jd)
 
 
 async def regenerate_bullet(

@@ -1,10 +1,12 @@
 """
 Resume Grounding & Directional ATS Scoring Evaluation Suite.
 
-Evaluates 10 diverse candidates against 10 real-world job descriptions to verify:
-1. Zero grounding violations: ungrounded metrics, fake employers, or fabricated skills are strictly eliminated.
-2. Directional score validity: targeted profiles score higher on matched roles than mismatched roles.
-3. Grounded outreach generation: cover letters and recruiter messages stay 100% within verified facts.
+Evaluates 10 candidates against 10 job descriptions:
+1. The grounding guard removes fabrications: every draft gets invented skills, an invented employer, an
+   invented number and an invented project planted in it, and none may survive ground_profile.
+2. The guard leaves honest drafts alone: a draft that only uses library facts must come back unchanged.
+3. Scores point the right way: the candidate a job was written for ranks first among all ten.
+4. (--live) Cover letters and recruiter messages are generated and checked for unsupported claims.
 
 Usage:
     python backend/eval/resume_eval/evaluate_resume.py
@@ -22,11 +24,17 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.services.resume import ats
+from app.services.resume import ats, grounding
 from app.services.resume.agents import ground_profile
 from app.services.resume.latex import profile_plain_text
-from app.services.resume.outreach import _numbers, _num_key, generate_cover_letter, generate_recruiter_message
-from app.services.resume.schemas import JDAnalysis, Profile
+from app.services.resume.outreach import generate_cover_letter, generate_recruiter_message
+from app.services.resume.schemas import JDAnalysis, Profile, Project
+
+# Skills planted into drafts; each candidate gets the first two its library never mentions
+PLANT_SKILLS = ["kubernetes", "terraform", "snowflake", "swiftui", "owasp", "pytorch", "kafka", "flutter"]
+PLANT_EMPLOYER = "Initech Global"
+PLANT_NUMBER = "7,777"
+PLANT_PROJECT = "QuantumLedger"
 
 
 def load_dataset() -> tuple[list[dict], list[dict]]:
@@ -36,131 +44,119 @@ def load_dataset() -> tuple[list[dict], list[dict]]:
     return data["resumes"], data["jobs"]
 
 
-def evaluate_grounding(profile: Profile, raw_corpus: str) -> tuple[int, list[str]]:
-    """Verify that a candidate's profile strictly respects the corpus facts."""
-    corpus_numbers = {_num_key(n) for n in _numbers(raw_corpus)}
-    violations = []
+def job_analysis(job: dict) -> JDAnalysis:
+    jd = ats.fallback_jd_analysis(job["text"])
+    jd.title, jd.company = job["title"], job["company"]
+    return jd
 
-    # Check summary
-    for num in _numbers(profile.summary):
-        if _num_key(num) not in corpus_numbers:
-            violations.append(f"Ungrounded number in summary: '{num}'")
 
-    # Check experience bullets
-    for exp in profile.experience:
-        for b in exp.bullets:
-            for num in _numbers(b):
-                if _num_key(num) not in corpus_numbers:
-                    violations.append(f"Ungrounded number in experience ({exp.company}): '{num}'")
+def plant_fabrications(profile: Profile, corpus: str) -> tuple[Profile, list[str]]:
+    """A draft that rewrites the library but also claims things the library never mentions."""
+    skills = [s for s in PLANT_SKILLS if not ats.term_in_text(s, corpus)][:2]
+    draft = profile.model_copy(deep=True)
+    draft.summary = f"{profile.summary} Deep expertise in {skills[0].title()} and {skills[1].title()}."
+    if draft.experience:
+        draft.experience[0].bullets = draft.experience[0].bullets + [
+            f"Scaled the {skills[0].title()} platform at {PLANT_EMPLOYER} to {PLANT_NUMBER} daily users.",
+        ]
+    draft.skills = {**draft.skills, "Planted": [s.title() for s in skills]}
+    draft.projects = draft.projects + [Project(name=PLANT_PROJECT, tech=skills[1], bullets=["Built it."])]
+    return draft, [*skills, PLANT_EMPLOYER, PLANT_NUMBER, PLANT_PROJECT]
 
-    # Check project bullets
-    for p in profile.projects:
-        for b in p.bullets:
-            for num in _numbers(b):
-                if _num_key(num) not in corpus_numbers:
-                    violations.append(f"Ungrounded number in project ({p.name}): '{num}'")
 
-    return len(violations), violations
+def guard_check(profile: Profile, jd: JDAnalysis) -> tuple[list[str], int]:
+    """(planted claims that survived the guard, honest bullets the guard wrongly changed)."""
+    corpus = profile_plain_text(profile)
+    draft, planted = plant_fabrications(profile, corpus)
+    out, _ = ground_profile(draft, profile, corpus, jd)
+    text = profile_plain_text(out)
+    leaked = [p for p in planted if ats.term_in_text(p, text) or p in text]
+
+    honest, _ = ground_profile(profile.model_copy(deep=True), profile, corpus, jd)
+    original = [b for e in profile.experience for b in e.bullets] + [b for p in profile.projects for b in p.bullets]
+    kept = {b for e in honest.experience for b in e.bullets} | {b for p in honest.projects for b in p.bullets}
+    false_reverts = sum(1 for b in original if b not in kept)
+    return leaked, false_reverts
+
+
+def rank_of_target(job: dict, resumes_by_id: dict[str, dict]) -> tuple[int, int, int]:
+    """(target's score, best other score, target's rank among all candidates, 1 = best)."""
+    jd = job_analysis(job)
+    scores = {
+        rid: ats.build_report(profile_plain_text(Profile.model_validate(r)), jd, meta=None, fit=None).total
+        for rid, r in resumes_by_id.items()
+    }
+    target = scores[job["target_resume_id"]]
+    best_other = max(s for rid, s in scores.items() if rid != job["target_resume_id"])
+    rank = 1 + sum(1 for rid, s in scores.items() if rid != job["target_resume_id"] and s > target)
+    return target, best_other, rank
 
 
 async def run_benchmark(live_mode: bool = False) -> int:
     resumes_data, jobs_data = load_dataset()
-    print("=" * 80)
+    resumes_by_id = {r["id"]: r for r in resumes_data}
+    print("=" * 96)
     print("       RESUME GROUNDING & DIRECTIONAL ATS EVALUATION BENCHMARK")
     print(f"       Corpus: {len(resumes_data)} Resumes x {len(jobs_data)} Job Descriptions | Live Mode: {live_mode}")
-    print("=" * 80)
+    print("=" * 96)
+    print(f"\n{'Candidate':<18} | {'Target Role':<24} | {'Score':>5} | {'Best other':>10} | {'Rank':>4} | "
+          f"{'Leaked':>6} | {'Wrong reverts':>13} | Status")
+    print("-" * 96)
 
-    resumes_by_id = {r["id"]: r for r in resumes_data}
-    total_checks = 0
-    total_violations = 0
-    directional_passes = 0
-
-    print(f"\n{'Candidate':<18} | {'Target Role':<24} | {'Match Score':<11} | {'Cross Avg':<9} | {'Violations':<10} | {'Status'}")
-    print("-" * 88)
-
+    total_leaked = total_reverts = rank_one = 0
     for job in jobs_data:
         target_res = resumes_by_id[job["target_resume_id"]]
-        target_profile = Profile.model_validate(target_res)
-        target_text = profile_plain_text(target_profile)
+        profile = Profile.model_validate(target_res)
+        score, best_other, rank = rank_of_target(job, resumes_by_id)
+        leaked, reverts = guard_check(profile, job_analysis(job))
+        total_leaked += len(leaked)
+        total_reverts += reverts
+        rank_one += rank == 1
+        ok = not leaked and not reverts and rank == 1
+        print(f"{target_res['name']:<18} | {job['title'][:24]:<24} | {score:>4}% | {best_other:>9}% | {rank:>4} | "
+              f"{len(leaked):>6} | {reverts:>13} | {'PASS' if ok else 'FAIL'}")
+        for item in leaked:
+            print(f"    leaked: {item}")
 
-        # Analyze JD deterministically or with LLM if live
-        jd = ats.fallback_jd_analysis(job["text"])
-        jd.title = job["title"]
-        jd.company = job["company"]
-
-        # 1. Matched ATS score
-        report_matched = ats.build_report(target_text, jd, meta=None, fit=None)
-        matched_score = report_matched.total
-
-        # 2. Cross-domain ATS score (against other candidates on this job)
-        other_scores = []
-        for other_id, other_res in resumes_by_id.items():
-            if other_id == job["target_resume_id"]:
-                continue
-            other_prof = Profile.model_validate(other_res)
-            other_text = profile_plain_text(other_prof)
-            other_report = ats.build_report(other_text, jd, meta=None, fit=None)
-            other_scores.append(other_report.total)
-        cross_avg = round(sum(other_scores) / len(other_scores)) if other_scores else 0
-
-        # Directional test: matched candidate should outperform cross average
-        is_directional = matched_score >= cross_avg
-        if is_directional:
-            directional_passes += 1
-
-        # 3. Grounding invariant test
-        grounded, warnings = ground_profile(target_profile, target_profile, target_text)
-        violation_count, violations = evaluate_grounding(grounded, target_text)
-        total_violations += violation_count
-        total_checks += 1
-
-        status_str = "PASS" if (violation_count == 0 and is_directional) else "WARN"
-        print(
-            f"{target_res['name']:<18} | {job['title'][:24]:<24} | {matched_score:>8}%   | {cross_avg:>6}%   | {violation_count:>10} | {status_str}"
-        )
-
-    # 4. Test Grounded Outreach generation
-    print("\n" + "-" * 88)
-    print("Testing Grounded Outreach Pipeline (Cover Letter & Recruiter Message)...")
-    sample_res = resumes_by_id["frontend-dev"]
-    sample_job = jobs_data[0]
-    sample_profile = Profile.model_validate(sample_res)
-    sample_text = profile_plain_text(sample_profile)
-    sample_jd = ats.fallback_jd_analysis(sample_job["text"])
-    sample_jd.title = sample_job["title"]
-    sample_jd.company = sample_job["company"]
-
+    print("\n" + "-" * 96)
     if live_mode:
+        print("Generating outreach with the live LLM...")
+        sample = Profile.model_validate(resumes_by_id[jobs_data[0]["target_resume_id"]])
+        corpus = profile_plain_text(sample)
+        jd = job_analysis(jobs_data[0])
         try:
-            letter = await generate_cover_letter(sample_profile, sample_jd, sample_job["text"], sample_text)
-            print(f"  [x] Live Cover Letter generated ({len(letter['full_text'])} chars)")
-            msg = await generate_recruiter_message(sample_profile, sample_jd, sample_job["text"], "linkedin", sample_text)
-            print(f"  [x] Live Recruiter message generated ({len(msg['message'].split())} words)")
+            letter = await generate_cover_letter(sample, jd, jobs_data[0]["text"], corpus)
+            print(f"  [x] Cover letter: {len(letter['full_text'])} chars, warnings: {letter['warnings'] or 'none'}")
+            msg = await generate_recruiter_message(sample, jd, jobs_data[0]["text"], "linkedin", corpus)
+            print(f"  [x] Recruiter message: {len(msg['message'].split())} words, warnings: {msg['warnings'] or 'none'}")
         except Exception as exc:
-            print(f"  [!] Live outreach test skipped or error: {exc}")
+            print(f"  [!] Live outreach failed: {exc}")
     else:
-        print("  [x] Outreach prompt schemas and grounding checks verified (offline pass)")
+        claims = grounding.unsupported_claims(
+            f"I scaled Kubernetes at {PLANT_EMPLOYER} to {PLANT_NUMBER} users.", "Python developer.",
+        )
+        print(f"  [x] Outreach claim check (offline): flagged {', '.join(claims)}")
 
-    # Benchmark Summary
-    print("\n" + "=" * 80)
+    n = len(jobs_data)
+    print("\n" + "=" * 96)
     print("                              EVALUATION SUMMARY")
-    print("=" * 80)
-    print(f"  * Total Candidate x Job Pairs Tested : {total_checks}")
-    print(f"  * Grounding Violations Detected       : {total_violations} (Requirement: 0)")
-    print(f"  * Directional Scoring Success Rate    : {directional_passes}/{total_checks} ({directional_passes/total_checks*100:.1f}%)")
-    print("=" * 80)
+    print("=" * 96)
+    print(f"  * Candidate x job pairs tested          : {n}")
+    print(f"  * Planted fabrications that survived    : {total_leaked} (requirement: 0)")
+    print(f"  * Honest bullets wrongly reverted       : {total_reverts} (requirement: 0)")
+    print(f"  * Right candidate ranked first          : {rank_one}/{n}")
+    print("=" * 96)
 
-    if total_violations == 0 and directional_passes == total_checks:
+    if total_leaked == 0 and total_reverts == 0 and rank_one == n:
         print("\nAll benchmark criteria passed successfully!\n")
         return 0
-    else:
-        print("\nNotice: Some benchmark criteria need attention.\n")
-        return 1
+    print("\nNotice: Some benchmark criteria need attention.\n")
+    return 1
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate resume grounding and scoring suite.")
-    parser.add_argument("--live", action="store_true", help="Run with live LLM tailoring/outreach.")
+    parser.add_argument("--live", action="store_true", help="Also generate outreach with the live LLM.")
     args = parser.parse_args()
 
     sys.exit(asyncio.run(run_benchmark(live_mode=args.live)))

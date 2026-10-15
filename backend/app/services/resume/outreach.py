@@ -10,6 +10,7 @@ import re
 from typing import Literal
 
 from app.services.resume.llm_utils import llm_json
+from app.services.resume import grounding
 from app.services.resume.schemas import JDAnalysis, Profile
 from app.utils.logging import get_logger
 
@@ -93,6 +94,15 @@ def _profile_context(profile: Profile) -> str:
     return "\n".join(lines)
 
 
+def _claim_warnings(text: str, corpus: str, jd: JDAnalysis, jd_text: str) -> list[str]:
+    """Claims in the generated text that the library does not support. The target company and anything the
+    job description names may be mentioned; skills only count as claims when the library lacks them."""
+    claims = grounding.unsupported_claims(text, corpus, jd, allowed_orgs=[jd.company, jd.title, jd_text])
+    if not claims:
+        return []
+    return [f"Not found in your resumes, check before sending: {', '.join(claims[:6])}"]
+
+
 async def generate_cover_letter(
     profile: Profile,
     jd: JDAnalysis,
@@ -123,12 +133,7 @@ async def generate_cover_letter(
             f"{data.get('sign_off', 'Sincerely,')}"
         )
 
-    # Check that numbers in cover letter exist in corpus / profile
-    corpus_numbers = {_num_key(n) for n in _numbers(corpus or candidate_summary)}
-    unsupported = [n for n in _numbers(full_text) if _num_key(n) not in corpus_numbers]
-    warnings = []
-    if unsupported:
-        warnings.append(f"Notice: Verify specific metrics in cover letter: {', '.join(unsupported[:5])}")
+    warnings = _claim_warnings(full_text, corpus or candidate_summary, jd, jd_text)
 
     return {
         "subject": data.get("subject", f"Application for {jd.title} - {profile.name}"),
@@ -163,11 +168,7 @@ async def generate_recruiter_message(
     data = await llm_json(_RECRUITER_MESSAGE_PROMPT, user_prompt)
     message = data.get("message", "")
 
-    corpus_numbers = {_num_key(n) for n in _numbers(corpus or candidate_summary)}
-    unsupported = [n for n in _numbers(message) if _num_key(n) not in corpus_numbers]
-    warnings = []
-    if unsupported:
-        warnings.append(f"Notice: Verify specific metrics: {', '.join(unsupported[:3])}")
+    warnings = _claim_warnings(message, corpus or candidate_summary, jd, jd_text)
 
     return {
         "subject": data.get("subject", f"Regarding {jd.title} at {jd.company}"),

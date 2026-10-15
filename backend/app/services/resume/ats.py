@@ -104,6 +104,15 @@ SYNONYM_GROUPS = [
     {"test driven development", "tdd"},
     {"git", "github", "gitlab", "version control"},
     {"agile", "scrum", "kanban"},
+    # Platforms & tools written several ways
+    {"core data", "coredata"},
+    {"ci/cd", "continuous integration", "continuous delivery", "continuous deployment"},
+    {"kubernetes", "k8s"},
+    {"postgresql", "postgres"},
+    {"gcp", "google cloud"},
+    {"aws", "amazon web services"},
+    {"objective-c", "objc"},
+    {"react native", "react-native"},
 ]
 _SYNONYMS: dict[str, set[str]] = {}
 for _group in SYNONYM_GROUPS:
@@ -120,6 +129,19 @@ TECH_TERMS = [
     "pytorch", "pandas", "numpy", "scikit-learn", "machine learning", "deep learning", "nlp", "llm",
     "langchain", "langgraph", "rag", "data structures", "algorithms", "system design", "agile", "scrum",
     "unit testing", "junit", "pytest", "jest", "tailwind", "redux", "oauth", "jwt", "websockets",
+    # Mobile
+    "ios", "android", "swiftui", "uikit", "core data", "combine", "xcode", "testflight", "objective-c",
+    "xctest", "cocoapods", "fastlane", "react native", "flutter", "dart", "jetpack compose", "firebase",
+    # Data
+    "spark", "airflow", "dbt", "snowflake", "bigquery", "databricks", "hadoop", "etl", "tableau", "power bi",
+    "dynamodb", "cassandra", "sqlite",
+    # Cloud & DevOps
+    "ansible", "helm", "prometheus", "grafana", "github actions", "serverless", "lambda", "cloudformation",
+    "argo cd", "nginx",
+    # Security
+    "owasp", "penetration testing", "siem", "iam", "burp suite", "threat modeling", "vulnerability management",
+    # Frontend & web
+    "svelte", "webpack", "vite", "storybook", "cypress", "playwright", "nestjs", "ruby on rails",
 ]
 
 SECTION_PATTERNS = {
@@ -331,6 +353,9 @@ async def match_skills_semantic(
 def fallback_jd_analysis(jd_text: str) -> JDAnalysis:
     """Deterministic JD analysis used when the LLM is unavailable."""
     found = [t for t in TECH_TERMS if term_in_text(t, jd_text)]
+    # Terms the posting names first are usually the ones it cares about most
+    lower = jd_text.lower()
+    found.sort(key=lambda t: min((i for v in _variants(t) if (i := lower.find(v)) >= 0), default=len(lower)))
     return JDAnalysis(must_have=found[:14], nice_to_have=found[14:24])
 
 

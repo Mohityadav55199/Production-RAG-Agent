@@ -45,7 +45,7 @@ def test_fabricated_numbers_revert_to_the_original_bullet():
     }]})
     assert "9 million" not in " ".join(out.experience[0].bullets)
     assert ORIGINAL[0] in out.experience[0].bullets
-    assert any("unsupported numbers" in w for w in warnings)
+    assert any("not in your library" in w and "number 9" in w for w in warnings)
 
 
 def test_numbers_that_exist_in_the_library_are_kept():
@@ -79,3 +79,33 @@ def test_every_library_role_is_kept_even_if_the_model_omits_it():
 def test_summary_with_unsupported_numbers_falls_back_to_the_original():
     out, _ = _ground({"summary": "Engineer with 15 years of experience and a 300% growth record."})
     assert out.summary == "Full stack developer."
+
+
+def test_invented_skills_in_bullets_revert_to_the_original_bullet():
+    out, warnings = _ground({"experience": [{
+        "company": "Acme", "title": "x",
+        "bullets": ["Migrated the FastAPI services to Kubernetes and Terraform-managed infrastructure."],
+    }]})
+    text = " ".join(out.experience[0].bullets)
+    assert "Kubernetes" not in text and "Terraform" not in text
+    assert any("skill kubernetes" in w for w in warnings)
+
+
+def test_invented_employers_in_bullets_revert_to_the_original_bullet():
+    out, warnings = _ground({"experience": [{
+        "company": "Acme", "title": "x", "bullets": ["Built FastAPI services at Google for the search team."],
+    }]})
+    assert "Google" not in " ".join(out.experience[0].bullets)
+    assert any("organisation Google" in w for w in warnings)
+
+
+def test_summary_with_invented_skills_falls_back_to_the_library_summary():
+    out, warnings = _ground({"summary": "Backend engineer experienced with Kubernetes and AWS at scale."})
+    assert out.summary == library_profile().summary
+    assert any(w.startswith("Summary mentioned") for w in warnings)
+
+
+def test_supported_rewrites_and_everyday_words_are_kept():
+    rewritten = "Built REST APIs with FastAPI and worked with Product and Design on the rest of the roadmap."
+    out, warnings = _ground({"experience": [{"company": "Acme", "title": "x", "bullets": [rewritten]}]})
+    assert rewritten in out.experience[0].bullets
