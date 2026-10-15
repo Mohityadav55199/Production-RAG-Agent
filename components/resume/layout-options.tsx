@@ -7,6 +7,7 @@ const TEMPLATES: { id: TemplateName; label: string; hint: string }[] = [
   { id: "classic", label: "Classic", hint: "Summary, skills, then experience" },
   { id: "compact", label: "Compact", hint: "Tighter spacing, fits more on a page" },
   { id: "skills_first", label: "Skills first", hint: "Skills lead, good for career changers" },
+  { id: "student", label: "Student", hint: "Education leads, ideal for students and new grads" },
 ];
 
 const FONT_SIZES: RenderOptions["font_pt"][] = [10, 11, 12];

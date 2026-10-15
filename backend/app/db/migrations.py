@@ -44,6 +44,29 @@ _STATEMENTS = [
     # Conversations become per-user
     "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS user_id VARCHAR(64)",
     "CREATE INDEX IF NOT EXISTS ix_conversations_user_id ON conversations (user_id)",
+    # Job applications tracker
+    """
+    CREATE TABLE IF NOT EXISTS job_applications (
+        id UUID PRIMARY KEY,
+        user_id VARCHAR(64),
+        company VARCHAR(200) NOT NULL,
+        job_title VARCHAR(200) NOT NULL,
+        job_url VARCHAR(500),
+        location VARCHAR(200),
+        salary VARCHAR(100),
+        status VARCHAR(50) NOT NULL DEFAULT 'saved',
+        resume_generation_id UUID,
+        resume_version_name VARCHAR(200),
+        ats_score INTEGER,
+        jd_text TEXT,
+        notes TEXT,
+        applied_date TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_job_applications_user_id ON job_applications (user_id)",
+    "CREATE INDEX IF NOT EXISTS ix_job_applications_status ON job_applications (status)",
 ]
 
 

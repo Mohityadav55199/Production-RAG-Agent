@@ -19,6 +19,7 @@ score reached it, and the app flags drafts that fall short (they stay downloadab
 
 import asyncio
 import difflib
+import hashlib
 import re
 from typing import Any, AsyncGenerator, TypedDict
 
@@ -42,6 +43,13 @@ logger = get_logger(__name__)
 MAX_ROLE_BULLETS = 5
 MAX_PROJECTS = 4
 MAX_PROJECT_BULLETS = 3
+
+_JD_CACHE: dict[str, JDAnalysis] = {}
+
+
+def clear_jd_cache() -> None:
+    """Clear in-memory cached job description analyses (useful for testing and manual resets)."""
+    _JD_CACHE.clear()
 
 _JD_PROMPT = """\
 You analyse job descriptions for resume tailoring. Extract:
@@ -236,6 +244,11 @@ def ground_profile(draft: Profile, merged: Profile, corpus: str) -> tuple[Profil
 # ── Nodes ────────────────────────────────────────────────────────────────────
 
 async def analyze_jd(jd_text: str) -> JDAnalysis:
+    jd_key = hashlib.sha256(jd_text.strip().encode("utf-8")).hexdigest()
+    if jd_key in _JD_CACHE:
+        logger.info("Reusing cached JD analysis for repeated paste")
+        return _JD_CACHE[jd_key]
+
     try:
         data = await llm_json(_JD_PROMPT, f"Job description:\n\n{jd_text[:8000]}")
         jd = JDAnalysis.model_validate(data)
@@ -249,6 +262,7 @@ async def analyze_jd(jd_text: str) -> JDAnalysis:
             jd.nice_to_have.append(term)
     if not (jd.must_have or jd.nice_to_have):
         raise ValueError("Could not find any skills or requirements in the job description. Paste the full JD.")
+    _JD_CACHE[jd_key] = jd
     return jd
 
 
@@ -401,8 +415,12 @@ async def node_score(state: TailorState, config: RunnableConfig) -> dict:
                    "message": "Compiling the PDF and computing the ATS score"})
     jd = JDAnalysis.model_validate(state["jd"])
     profile = Profile.model_validate(state["draft"])
-    options = RenderOptions.model_validate(state["options"]) if state.get("options") else None
-    scored = await score_profile(profile, options, jd, state["jd_text"])
+    options = RenderOptions.model_validate(state.get("options") or {})
+    # Skip LLM fit judge on early attempts to save latency and token quota; evaluate fit on final attempt or if threshold reached
+    is_final_attempt = attempt >= state.get("max_attempts", 3)
+    scored = await score_profile(profile, options, jd, state["jd_text"], with_fit=is_final_attempt)
+    if not is_final_attempt and scored["score"] >= state.get("threshold", 82):
+        scored = await score_profile(profile, options, jd, state["jd_text"], with_fit=True)
 
     report, pdf, tex = scored["report"], scored["pdf"], scored["tex"]
     warnings = list(state.get("warnings", [])) + scored["warnings"]

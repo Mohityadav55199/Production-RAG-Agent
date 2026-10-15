@@ -1,0 +1,490 @@
+{
+  "resumes": [
+    {
+      "id": "frontend-dev",
+      "name": "Alex Chen",
+      "title": "Senior Frontend Engineer",
+      "summary": "Frontend specialist with 6 years building high-performance web applications using React, Next.js, and TypeScript.",
+      "skills": {
+        "Languages": ["TypeScript", "JavaScript", "HTML5", "CSS3"],
+        "Frameworks": ["React", "Next.js", "Tailwind CSS", "Redux Toolkit"],
+        "Testing & Tools": ["Jest", "Cypress", "Webpack", "Vite", "Git"]
+      },
+      "experience": [
+        {
+          "company": "Veloce Web Studio",
+          "title": "Senior Frontend Developer",
+          "dates": "2021 - Present",
+          "location": "San Francisco, CA",
+          "bullets": [
+            "Architected modern Next.js 14 web app cutting page load time by 42%.",
+            "Designed accessible component library in React and Tailwind used by 18 engineers.",
+            "Implemented end-to-end test coverage with Cypress achieving 88% coverage."
+          ]
+        },
+        {
+          "company": "PixelCraft Inc",
+          "title": "Frontend Developer",
+          "dates": "2018 - 2021",
+          "location": "San Jose, CA",
+          "bullets": [
+            "Built interactive single-page dashboards with React and Redux.",
+            "Integrated RESTful APIs and optimized WebSocket feeds handling 1500 events per second."
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "DesignSystemKit",
+          "tech": "React, TypeScript, Tailwind",
+          "bullets": ["Open-source design system with 24 accessible UI primitives."]
+        }
+      ],
+      "education": [
+        {
+          "school": "University of California, Berkeley",
+          "degree": "B.S. in Computer Science",
+          "dates": "2014 - 2018",
+          "location": "Berkeley, CA",
+          "details": "GPA 3.8, Focus on Human-Computer Interaction"
+        }
+      ]
+    },
+    {
+      "id": "backend-dev",
+      "name": "Marcus Vance",
+      "title": "Senior Backend Engineer",
+      "summary": "Backend engineer specializing in distributed systems, high-concurrency microservices, Python, and PostgreSQL.",
+      "skills": {
+        "Languages": ["Python", "Go", "SQL"],
+        "Frameworks": ["FastAPI", "Django", "gRPC"],
+        "Data & Cloud": ["PostgreSQL", "Redis", "Kafka", "Docker", "AWS"]
+      },
+      "experience": [
+        {
+          "company": "StreamScale Systems",
+          "title": "Staff Backend Engineer",
+          "dates": "2020 - Present",
+          "location": "Austin, TX",
+          "bullets": [
+            "Built distributed event pipeline with Kafka and FastAPI processing 45M requests daily.",
+            "Optimized PostgreSQL connection pool and queries cutting p99 query latency from 320ms to 45ms.",
+            "Managed Redis cluster caching high-frequency tenant data with 99.98% uptime."
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "AsyncQueryRouter",
+          "tech": "Python, Redis, PostgreSQL",
+          "bullets": ["Idempotent async task router for background database operations."]
+        }
+      ],
+      "education": [
+        {
+          "school": "UT Austin",
+          "degree": "B.S. in Electrical and Computer Engineering",
+          "dates": "2015 - 2019",
+          "location": "Austin, TX",
+          "details": "Distributed Systems specialization"
+        }
+      ]
+    },
+    {
+      "id": "devops-engineer",
+      "name": "Elena Rostova",
+      "title": "DevOps & Cloud Platform Engineer",
+      "summary": "DevOps engineer with deep expertise in Kubernetes, Terraform, AWS, and zero-downtime CI/CD pipelines.",
+      "skills": {
+        "Cloud & Orchestration": ["Kubernetes", "Docker", "AWS", "EKS", "Terraform"],
+        "CI/CD & Monitoring": ["GitHub Actions", "Prometheus", "Grafana", "ArgoCD"],
+        "Scripting & OS": ["Linux", "Bash", "Python"]
+      },
+      "experience": [
+        {
+          "company": "CloudForge Infrastructure",
+          "title": "Lead DevOps Engineer",
+          "dates": "2021 - Present",
+          "location": "Seattle, WA",
+          "bullets": [
+            "Managed 12 multi-region Kubernetes clusters running 450 microservices.",
+            "Wrote Terraform modules provisioning immutable AWS infrastructure.",
+            "Configured ArgoCD GitOps pipelines reducing deployment rollback time to under 90 seconds."
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "KubeAutoTuner",
+          "tech": "Kubernetes, Go, Prometheus",
+          "bullets": ["Automated resource request optimizer reducing cluster costs by 28%."]
+        }
+      ],
+      "education": [
+        {
+          "school": "University of Washington",
+          "degree": "B.S. in Informatics",
+          "dates": "2016 - 2020",
+          "location": "Seattle, WA",
+          "details": "Cloud Security focus"
+        }
+      ]
+    },
+    {
+      "id": "ml-engineer",
+      "name": "Dr. Priya Nair",
+      "title": "Machine Learning & RAG Engineer",
+      "summary": "Applied ML specialist with expertise in Large Language Models, RAG architectures, PyTorch, and vector databases.",
+      "skills": {
+        "AI/ML": ["PyTorch", "Hugging Face", "LangChain", "RAG", "LLMs"],
+        "Vector & Data": ["Qdrant", "Chroma", "Pandas", "NumPy", "Scikit-Learn"],
+        "Languages": ["Python", "SQL", "C++"]
+      },
+      "experience": [
+        {
+          "company": "Cognitive AI Labs",
+          "title": "Senior AI Research Engineer",
+          "dates": "2022 - Present",
+          "location": "Boston, MA",
+          "bullets": [
+            "Deployed production RAG system serving 200k daily queries with sub-800ms response time.",
+            "Fine-tuned open-source LLMs on enterprise domain data improving ROUGE-L by 24%.",
+            "Indexed 2.5M dense document vectors in Qdrant with HNSW cosine search."
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "FastEmbeddings",
+          "tech": "PyTorch, CUDA, Python",
+          "bullets": ["GPU batch inference server for transformer embeddings."]
+        }
+      ],
+      "education": [
+        {
+          "school": "MIT",
+          "degree": "Ph.D. in Computer Science",
+          "dates": "2017 - 2022",
+          "location": "Cambridge, MA",
+          "details": "Dissertation on Efficient Neural Retrieval"
+        }
+      ]
+    },
+    {
+      "id": "fullstack-dev",
+      "name": "Jordan Bell",
+      "title": "Full-Stack Software Engineer",
+      "summary": "Full-stack engineer building end-to-end products using TypeScript, Next.js, Node.js, and PostgreSQL.",
+      "skills": {
+        "Frontend": ["React", "Next.js", "TypeScript", "Tailwind CSS"],
+        "Backend": ["Node.js", "Express", "PostgreSQL", "Prisma"],
+        "DevOps": ["Docker", "Git", "Vercel"]
+      },
+      "experience": [
+        {
+          "company": "Launchpad Ventures",
+          "title": "Full-Stack Engineer",
+          "dates": "2021 - Present",
+          "location": "Denver, CO",
+          "bullets": [
+            "Engineered customer onboarding portal from scratch generating $1.2M in annual recurring revenue.",
+            "Designed PostgreSQL schemas with Prisma handling multi-tenant authorization.",
+            "Integrated Stripe checkout and webhook workflows processing 5000 transactions monthly."
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "SaasTemplate",
+          "tech": "Next.js, Tailwind, Node.js",
+          "bullets": ["Production-ready multi-tenant SaaS starter kit."]
+        }
+      ],
+      "education": [
+        {
+          "school": "University of Colorado Boulder",
+          "degree": "B.S. in Computer Science",
+          "dates": "2017 - 2021",
+          "location": "Boulder, CO",
+          "details": "Magna Cum Laude"
+        }
+      ]
+    },
+    {
+      "id": "data-engineer",
+      "name": "Tariq Mansoor",
+      "title": "Lead Data Platform Engineer",
+      "summary": "Data engineer building petabyte-scale pipelines with Apache Spark, Kafka, Snowflake, and BigQuery.",
+      "skills": {
+        "Data Engines": ["Apache Spark", "Kafka", "Airflow", "dbt", "Snowflake"],
+        "Languages": ["Python", "SQL", "Scala"],
+        "Cloud": ["GCP", "BigQuery", "AWS", "S3"]
+      },
+      "experience": [
+        {
+          "company": "DataNexus Corp",
+          "title": "Staff Data Engineer",
+          "dates": "2019 - Present",
+          "location": "Chicago, IL",
+          "bullets": [
+            "Architected real-time Spark streaming pipeline ingesting 12TB daily from clickstream logs.",
+            "Orchestrated 180 Airflow DAGs maintaining 99.95% data freshness SLA.",
+            "Built dimensional models in dbt and Snowflake serving 45 BI stakeholders."
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "ParquetStreamCleaner",
+          "tech": "PySpark, Delta Lake",
+          "bullets": ["Idempotent compaction engine for streaming Parquet partitions."]
+        }
+      ],
+      "education": [
+        {
+          "school": "University of Illinois Urbana-Champaign",
+          "degree": "M.S. in Computer Science",
+          "dates": "2017 - 2019",
+          "location": "Urbana, IL",
+          "details": "Data Mining focus"
+        }
+      ]
+    },
+    {
+      "id": "mobile-dev",
+      "name": "Sofia Rossi",
+      "title": "Senior iOS & Mobile Engineer",
+      "summary": "Mobile engineer with 5 years crafting fluid consumer apps using Swift, SwiftUI, and Flutter.",
+      "skills": {
+        "Mobile": ["Swift", "SwiftUI", "UIKit", "Flutter", "Dart"],
+        "Architecture": ["MVVM", "Combine", "CoreData", "REST APIs"],
+        "Tooling": ["Xcode", "Fastlane", "CocoaPods", "TestFlight"]
+      },
+      "experience": [
+        {
+          "company": "AppFlow Studio",
+          "title": "Senior iOS Developer",
+          "dates": "2020 - Present",
+          "location": "New York, NY",
+          "bullets": [
+            "Shipped SwiftUI fitness tracking app with 4.8 App Store rating and 850k active users.",
+            "Reduced app crash rate to 0.02% by refactoring networking and CoreData stores.",
+            "Implemented offline synchronization engine for background health data syncing."
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "SwiftChartsUI",
+          "tech": "Swift, SwiftUI",
+          "bullets": ["Interactive financial charting library with 1.2k GitHub stars."]
+        }
+      ],
+      "education": [
+        {
+          "school": "NYU Tandon School of Engineering",
+          "degree": "B.S. in Computer Science",
+          "dates": "2016 - 2020",
+          "location": "Brooklyn, NY",
+          "details": "Mobile Computing lab member"
+        }
+      ]
+    },
+    {
+      "id": "student-dev",
+      "name": "Samantha Liu",
+      "title": "Computer Science Graduate",
+      "summary": "Recent CS honors graduate passionate about software engineering, algorithms, and full-stack development.",
+      "skills": {
+        "Languages": ["Python", "Java", "C++", "JavaScript", "SQL"],
+        "Frameworks": ["React", "Node.js", "FastAPI"],
+        "Core": ["Data Structures", "Algorithms", "Git", "Linux"]
+      },
+      "experience": [
+        {
+          "company": "FinTech Innovations",
+          "title": "Software Engineering Intern",
+          "dates": "Jun 2023 - Aug 2023",
+          "location": "Chicago, IL",
+          "bullets": [
+            "Built automated reconciliation service in Python reducing manual ledger review by 65%.",
+            "Created internal reporting dashboard with React and Chart.js."
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "PeerStudyRoom",
+          "tech": "Node.js, WebSockets, React",
+          "bullets": ["Collaborative study platform with real-time video and whiteboard sharing."]
+        },
+        {
+          "name": "AlgorithmVisualizer",
+          "tech": "JavaScript, HTML5 Canvas",
+          "bullets": ["Interactive visualizer for graph traversal and sorting algorithms."]
+        }
+      ],
+      "education": [
+        {
+          "school": "Purdue University",
+          "degree": "B.S. in Computer Science, Honors",
+          "dates": "2020 - 2024",
+          "location": "West Lafayette, IN",
+          "details": "GPA 3.92, Dean's List every semester, TA for Data Structures"
+        }
+      ]
+    },
+    {
+      "id": "security-engineer",
+      "name": "David Okafor",
+      "title": "Application & Cloud Security Engineer",
+      "summary": "Security professional dedicated to threat modeling, secure code reviews, DevSecOps, and IAM governance.",
+      "skills": {
+        "Security": ["OWASP Top 10", "Threat Modeling", "SAST", "DAST", "Penetration Testing"],
+        "Cloud & IAM": ["AWS IAM", "OAuth 2.0", "JWT", "Zero Trust", "Terraform"],
+        "Languages & Tools": ["Python", "Bash", "Snyk", "Semgrep", "Linux"]
+      },
+      "experience": [
+        {
+          "company": "Fortress Cyber Labs",
+          "title": "Senior Security Engineer",
+          "dates": "2020 - Present",
+          "location": "Atlanta, GA",
+          "bullets": [
+            "Integrated SAST/DAST scanner checks in GitHub Actions catching 140 vulnerabilities prior to release.",
+            "Led SOC2 Type II audit and ISO 27001 readiness leading to clean compliance certification.",
+            "Refactored corporate OAuth 2.0 and JWT authentication architecture preventing session hijacking."
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "IAMPolicyLinter",
+          "tech": "Python, AWS Boto3",
+          "bullets": ["Static analysis linter identifying overly permissive wildcard IAM policies."]
+        }
+      ],
+      "education": [
+        {
+          "school": "Georgia Tech",
+          "degree": "B.S. in Cybersecurity",
+          "dates": "2015 - 2019",
+          "location": "Atlanta, GA",
+          "details": "President of Cybersecurity Club"
+        }
+      ]
+    },
+    {
+      "id": "tech-lead",
+      "name": "Rachel Goldman",
+      "title": "Engineering Lead & Architect",
+      "summary": "Seasoned engineering leader with 10+ years driving system architecture, team growth, and high-scale SaaS products.",
+      "skills": {
+        "Architecture": ["System Design", "Microservices", "Event-Driven", "High Availability"],
+        "Engineering": ["Python", "Go", "PostgreSQL", "Kafka", "Kubernetes", "AWS"],
+        "Leadership": ["Team Mentorship", "Sprint Planning", "Technical Hiring", "Agile"]
+      },
+      "experience": [
+        {
+          "company": "OmniCommerce Global",
+          "title": "Director of Engineering / Lead Architect",
+          "dates": "2018 - Present",
+          "location": "New York, NY",
+          "bullets": [
+            "Led engineering organization of 24 software engineers across 4 cross-functional squads.",
+            "Architected checkout and payment core processing $350M GMV annually with 99.99% uptime.",
+            "Mentored 6 engineers into senior and staff roles through structured technical roadmaps."
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "ArchitectureGuidelines",
+          "tech": "System Design, RFC Process",
+          "bullets": ["Internal engineering handbook for architectural decision records."]
+        }
+      ],
+      "education": [
+        {
+          "school": "Cornell University",
+          "degree": "M.Eng. in Computer Science",
+          "dates": "2012 - 2014",
+          "location": "Ithaca, NY",
+          "details": "Specialization in Systems and Networking"
+        }
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "id": "job-frontend",
+      "target_resume_id": "frontend-dev",
+      "title": "Senior Frontend Developer",
+      "company": "Hyperion Labs",
+      "text": "We are looking for a Senior Frontend Developer with deep React, Next.js, and TypeScript skills. You will architect user-facing web applications, maintain our Tailwind CSS design system, optimize Core Web Vitals, and build robust testing suites with Jest and Cypress. Experience with WebSockets and REST APIs required."
+    },
+    {
+      "id": "job-backend",
+      "target_resume_id": "backend-dev",
+      "title": "Distributed Backend Engineer",
+      "company": "Synapse Cloud",
+      "text": "Seeking a Backend Engineer proficient in Python, Go, and PostgreSQL. You will design high-throughput microservices using FastAPI and gRPC, orchestrate Kafka event streams, and manage low-latency Redis caching. Strong knowledge of system design, query optimization, and AWS is required."
+    },
+    {
+      "id": "job-devops",
+      "target_resume_id": "devops-engineer",
+      "title": "Cloud Platform & DevOps Engineer",
+      "company": "KubeScale",
+      "text": "KubeScale needs a DevOps Engineer with extensive Kubernetes, Docker, and AWS experience. You will write reusable Terraform infrastructure modules, configure GitHub Actions CI/CD pipelines, and monitor cluster health using Prometheus and Grafana. Strong Linux and Bash skills are essential."
+    },
+    {
+      "id": "job-ml",
+      "target_resume_id": "ml-engineer",
+      "title": "Applied AI / RAG Engineer",
+      "company": "VectorMind AI",
+      "text": "VectorMind is seeking an AI Engineer specializing in Retrieval-Augmented Generation (RAG) and Large Language Models. You must have proven hands-on experience with PyTorch, LangChain, Qdrant vector databases, and Python. Experience fine-tuning LLMs and evaluating dense vector retrieval is highly valued."
+    },
+    {
+      "id": "job-fullstack",
+      "target_resume_id": "fullstack-dev",
+      "title": "Full-Stack Software Engineer",
+      "company": "GrowthVelocity",
+      "text": "Join our fast-paced product squad building modern web applications with Next.js, React, Node.js, and TypeScript. You will work on PostgreSQL database schemas, build responsive Tailwind UI interfaces, and deploy secure APIs in Docker containers."
+    },
+    {
+      "id": "job-data",
+      "target_resume_id": "data-engineer",
+      "title": "Staff Data Engineer",
+      "company": "Quantix Analytics",
+      "text": "Seeking a Data Engineer to design petabyte-scale data pipelines using Apache Spark, Kafka, and Snowflake. Must have extensive SQL and Python proficiency, along with experience creating Airflow DAGs, dbt models, and working in GCP / BigQuery environments."
+    },
+    {
+      "id": "job-mobile",
+      "target_resume_id": "mobile-dev",
+      "title": "Senior iOS Engineer",
+      "company": "Pulse Fitness",
+      "text": "Pulse Fitness is looking for a passionate iOS Developer skilled in Swift, SwiftUI, and UIKit. You will build high-performance mobile animations, implement offline data synchronization with CoreData, and maintain fast CI/CD builds with Xcode and TestFlight."
+    },
+    {
+      "id": "job-student",
+      "target_resume_id": "student-dev",
+      "title": "Junior Software Engineer / New Grad",
+      "company": "Catalyst Software",
+      "text": "Exciting entry-level opportunity for a recent Computer Science graduate. We are looking for candidates with strong foundational knowledge in Data Structures, Algorithms, Python, and Java. Exposure to React, SQL, and Git is a plus."
+    },
+    {
+      "id": "job-security",
+      "target_resume_id": "security-engineer",
+      "title": "Application Security Engineer",
+      "company": "Apex Shield",
+      "text": "Apex Shield is hiring an Application Security Engineer to lead threat modeling, perform secure code reviews, and automate SAST/DAST security scanning. Required skills include OWASP Top 10 mitigation, OAuth 2.0, JWT authentication, AWS IAM security, and Python scripting."
+    },
+    {
+      "id": "job-tech-lead",
+      "target_resume_id": "tech-lead",
+      "title": "Engineering Manager & Technical Architect",
+      "company": "Starlight Enterprise",
+      "text": "Looking for a seasoned Engineering Leader with a background in distributed system design, microservices, and technical mentorship. You will guide technical roadmaps across multiple engineering squads, oversee high-availability architecture with Kafka and AWS, and foster an agile culture."
+    }
+  ]
+}

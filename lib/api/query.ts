@@ -11,6 +11,7 @@ export interface StreamHandlers {
   onError: (error: Error) => void;
   onConversation?: (conversationId: string) => void;
   onDiff?: (diff: string) => void;
+  onModelSwitched?: (notice: { model: string; provider?: string; message: string }) => void;
 }
 
 export interface StreamQueryOptions extends StreamHandlers {
@@ -42,6 +43,15 @@ function parseSseChunk(chunk: string, handlers: StreamHandlers) {
 
       if (type === "sources" || parsed.sources) {
         handlers.onSources(normalizeSources(parsed.sources ?? parsed.data));
+        continue;
+      }
+
+      if (type === "model_switched") {
+        handlers.onModelSwitched?.({
+          model: String(parsed.model ?? "backup model"),
+          provider: parsed.provider ? String(parsed.provider) : undefined,
+          message: String(parsed.message ?? "Switched to fallback model"),
+        });
         continue;
       }
 

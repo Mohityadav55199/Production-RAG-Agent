@@ -8,6 +8,7 @@ import { extractCodeFromImage, imageFilesFrom } from "@/lib/api/images";
 import { parseSourceKey, streamCompare, type CompareSide } from "@/lib/api/sources";
 import type { QuerySource } from "@/lib/types";
 import { SourceSelect, useKnowledgeSources } from "@/components/chat/source-select";
+import { CitationChips } from "@/components/chat/citation-chips";
 import { Button } from "@/components/ui/button";
 import { SafeMarkdown } from "@/components/ui/safe-markdown";
 import { Input } from "@/components/ui/input";
@@ -259,18 +260,7 @@ export function ComparePanel() {
             {error && <p className="text-sm text-destructive">{error}</p>}
 
             {usedSources.length > 0 && !running && (
-              <details className="text-xs">
-                <summary className="cursor-pointer font-medium text-muted-foreground">
-                  {usedSources.length} sources used
-                </summary>
-                <ul className="mt-2 space-y-1">
-                  {usedSources.map((s, i) => (
-                    <li key={i} className="truncate text-muted-foreground">
-                      {s.documentName}
-                    </li>
-                  ))}
-                </ul>
-              </details>
+              <CitationChips sources={usedSources} className="mt-3" />
             )}
           </CardContent>
         </Card>

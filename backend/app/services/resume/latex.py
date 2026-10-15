@@ -53,6 +53,7 @@ _STYLES = {
     "classic": {"before": "7pt", "title": r"\large", "item": "1pt", "name": r"\LARGE"},
     "compact": {"before": "4pt", "title": r"\normalsize", "item": "0pt", "name": r"\Large"},
     "skills_first": {"before": "7pt", "title": r"\large", "item": "1pt", "name": r"\LARGE"},
+    "student": {"before": "7pt", "title": r"\large", "item": "1pt", "name": r"\LARGE"},
 }
 
 # Section order per template; every template uses the same standard headings an ATS looks for.
@@ -60,6 +61,7 @@ _ORDERS = {
     "classic": ["summary", "skills", "experience", "projects", "education", "certifications", "achievements"],
     "compact": ["summary", "skills", "experience", "projects", "education", "certifications", "achievements"],
     "skills_first": ["skills", "summary", "experience", "projects", "education", "certifications", "achievements"],
+    "student": ["education", "skills", "projects", "experience", "certifications", "achievements", "summary"],
 }
 
 _PREAMBLE = r"""\documentclass[@FONT@pt,letterpaper]{article}

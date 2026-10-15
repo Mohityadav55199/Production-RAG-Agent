@@ -1,16 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { FileSearch, History, Library, Pencil, Sparkles } from "lucide-react";
+import { Briefcase, FileSearch, History, Library, Pencil, Sparkles } from "lucide-react";
 import { AtsCheckPanel } from "@/components/resume/ats-check-panel";
 import { DraftEditor } from "@/components/resume/draft-editor";
 import { HistoryPanel } from "@/components/resume/history-panel";
+import { JobTracker } from "@/components/resume/job-tracker";
 import { LibraryPanel, useResumeLibrary } from "@/components/resume/library-panel";
 import { TailorPanel } from "@/components/resume/tailor-panel";
 import { TabBar, panelId, tabId, type TabItem } from "@/components/ui/tab-bar";
 import { cn } from "@/lib/utils";
 
-type Tab = "tailor" | "editor" | "library" | "ats" | "history";
+type Tab = "tailor" | "editor" | "tracker" | "library" | "ats" | "history";
 
 const PREFIX = "resume";
 
@@ -28,6 +29,7 @@ export function ResumeWorkspace() {
   const tabs: readonly TabItem<Tab>[] = [
     { id: "tailor", label: "Tailor", icon: Sparkles },
     ...(editingId ? [{ id: "editor" as const, label: "Editor", icon: Pencil }] : []),
+    { id: "tracker", label: "Job tracker", icon: Briefcase },
     { id: "library", label: "Resume library", icon: Library, badge: resumes.length },
     { id: "ats", label: "ATS check", icon: FileSearch },
     { id: "history", label: "History", icon: History },
@@ -65,6 +67,7 @@ export function ResumeWorkspace() {
           "editor",
           <DraftEditor key={editingId} generationId={editingId} onChanged={() => setHistoryKey((k) => k + 1)} />
         )}
+      {panel("tracker", <JobTracker />)}
       {panel("library", <LibraryPanel resumes={resumes} loading={loading} onChanged={refetch} />)}
       {panel("ats", <AtsCheckPanel />)}
       {panel("history", <HistoryPanel refreshKey={historyKey} onOpen={openEditor} />)}

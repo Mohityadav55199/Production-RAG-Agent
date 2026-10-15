@@ -32,7 +32,9 @@ export interface QuerySource {
   documentId?: string;
   documentName?: string;
   chunkText?: string;
+  fullText?: string;
   page?: number;
+  chunkIndex?: number;
   score?: number;
   /** Stored pictures for this source's page (figures, or the image itself): GET /assets/{id} */
   images?: string[];
@@ -58,6 +60,8 @@ export interface ChatMessage {
   attachments?: { id: string; name: string; previewUrl: string }[];
   isStreaming?: boolean;
   error?: string;
+  /** Active fallback model notification if primary LLM encountered rate limits. */
+  fallbackNotice?: { model: string; provider?: string; message: string };
   /** The user's thumbs up/down on this answer. */
   rating?: "up" | "down";
 }

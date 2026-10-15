@@ -21,6 +21,8 @@ from app.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
+import re
+
 @dataclass
 class RetrievedChunk:
     """A single chunk returned by the vector search."""
@@ -30,7 +32,105 @@ class RetrievedChunk:
     page_number: int
     chunk_index: int
     text: str
-    score: float   # cosine similarity (0 – 1)
+    score: float   # cosine similarity (0 – 1) or composite reranked score
+    heading: str | None = None
+    section: str | None = None
+    dense_score: float | None = None
+    rerank_score: float | None = None
+
+
+_STOPWORDS = {
+    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "aren't",
+    "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "can",
+    "cannot", "could", "couldn't", "did", "didn't", "do", "does", "doesn't", "doing", "don't", "down",
+    "during", "each", "few", "for", "from", "further", "had", "hadn't", "has", "hasn't", "have", "haven't",
+    "having", "he", "her", "here", "hers", "herself", "him", "himself", "his", "how", "i", "if", "in",
+    "into", "is", "isn't", "it", "its", "itself", "let's", "me", "more", "most", "mustn't", "my", "myself",
+    "no", "nor", "not", "of", "off", "on", "once", "only", "or", "other", "ought", "our", "ours", "ourselves",
+    "out", "over", "own", "same", "shan't", "she", "should", "shouldn't", "so", "some", "such", "than", "that",
+    "the", "their", "theirs", "them", "themselves", "then", "there", "these", "they", "this", "those",
+    "through", "to", "too", "under", "until", "up", "very", "was", "wasn't", "we", "were", "weren't", "what",
+    "when", "where", "which", "while", "who", "whom", "why", "with", "won't", "would", "wouldn't", "you",
+    "your", "yours", "yourself", "yourselves",
+}
+
+
+def flash_rerank_chunks(
+    query: str,
+    chunks: list[RetrievedChunk],
+    top_k: int = 5,
+) -> list[RetrievedChunk]:
+    """
+    Second-stage flash cross-encoder reranker.
+
+    Scores candidate chunks using:
+      1. Exact token coverage (non-stopwords).
+      2. Heading & section alignment (1.25x boost).
+      3. Contiguous 2-gram and 3-gram phrase match (1.40x boost).
+      4. Length penalty for chunks under 100 characters.
+    """
+    if not chunks:
+        return []
+
+    words = re.findall(r"\b[a-zA-Z0-9_\-\.]{2,}\b", query.lower())
+    q_tokens = [w for w in words if w not in _STOPWORDS] or words
+    if not q_tokens:
+        return chunks[:top_k]
+
+    reranked: list[RetrievedChunk] = []
+    for c in chunks:
+        text_lower = c.text.lower()
+        heading_lower = (c.heading or "").lower()
+        section_lower = (c.section or "").lower()
+
+        # 1. Exact token coverage
+        matched = sum(1 for t in q_tokens if t in text_lower)
+        token_coverage = matched / len(q_tokens)
+
+        # 2. Heading and section weight (1.25x boost)
+        heading_match = any(t in heading_lower or t in section_lower for t in q_tokens)
+        heading_boost = 1.25 if heading_match else 1.0
+
+        # 3. Contiguous phrase bonus (1.40x boost)
+        phrase_match = False
+        if len(words) >= 2:
+            for i in range(len(words) - 1):
+                bigram = f"{words[i]} {words[i+1]}"
+                if bigram in text_lower:
+                    phrase_match = True
+                    break
+        if not phrase_match and len(words) >= 3:
+            for i in range(len(words) - 2):
+                trigram = f"{words[i]} {words[i+1]} {words[i+2]}"
+                if trigram in text_lower:
+                    phrase_match = True
+                    break
+        phrase_boost = 1.40 if phrase_match else 1.0
+
+        # 4. Length penalty for very short snippets
+        length_factor = min(1.0, max(0.2, len(c.text) / 100.0))
+
+        # Composite score blending dense score (0.40) and token coverage (0.60)
+        dense = c.dense_score if c.dense_score is not None else c.score
+        composite = (dense * 0.40 + token_coverage * 0.60) * heading_boost * phrase_boost * length_factor
+
+        reranked.append(
+            RetrievedChunk(
+                document_id=c.document_id,
+                filename=c.filename,
+                page_number=c.page_number,
+                chunk_index=c.chunk_index,
+                text=c.text,
+                score=composite,
+                heading=c.heading,
+                section=c.section,
+                dense_score=dense,
+                rerank_score=composite,
+            )
+        )
+
+    reranked.sort(key=lambda x: x.score, reverse=True)
+    return reranked[:top_k]
 
 
 _QUERY_CACHE_SIZE = 256
@@ -58,6 +158,7 @@ async def retrieve_chunks(
     document_ids: list[str] | None = None,
     min_score: float | None = None,
     max_gap: float | None = -1.0,
+    rerank: bool = True,
 ) -> list[RetrievedChunk]:
     """
     Embed *query* and return the top-k most semantically similar chunks.
@@ -94,11 +195,17 @@ async def retrieve_chunks(
             must=[qmodels.FieldCondition(key="document_id", match=qmodels.MatchAny(any=document_ids))]
         )
 
+    candidate_limit = (
+        top_k * settings.RERANKING_CANDIDATE_FACTOR
+        if (settings.RERANKING_ENABLED and rerank)
+        else top_k
+    )
+
     if hasattr(client, "query_points"):
         query_response = await client.query_points(
             collection_name=coll,
             query=query_vector,
-            limit=top_k,
+            limit=candidate_limit,
             with_payload=True,
             query_filter=query_filter,
         )
@@ -107,7 +214,7 @@ async def retrieve_chunks(
         search_results = await client.search(
             collection_name=coll,
             query_vector=query_vector,
-            limit=top_k,
+            limit=candidate_limit,
             with_payload=True,
             query_filter=query_filter,
         )
@@ -167,31 +274,37 @@ async def retrieve_chunks(
                 chunk_index=int(payload.get("chunk_index", 0)),
                 text=payload.get("text", ""),
                 score=float(hit.score),
+                heading=payload.get("heading"),
+                section=payload.get("section"),
+                dense_score=float(hit.score),
             ))
             
         if valid_candidates:
-            # Ensure descending order
-            valid_candidates.sort(key=lambda c: c.score, reverse=True)
-            top_score = valid_candidates[0].score
-            gap_cutoff = top_score - gap if gap is not None else float("-inf")
-            logger.info("Top score for query is %.4f. Gap cutoff is %.4f (max_gap=%s)", top_score, gap_cutoff, gap)
-            
-            for c in valid_candidates:
-                # Apply absolute score floor
-                if c.score < floor:
-                    logger.info(
-                        "Filtering out chunk filename='%s' index=%d (score=%.4f < floor=%.2f)",
-                        c.filename, c.chunk_index, c.score, floor
-                    )
-                    continue
-                # Apply relative score gap limit
-                if c.score < gap_cutoff:
-                    logger.info(
-                        "Filtering out chunk filename='%s' index=%d (score=%.4f < gap_cutoff=%.4f)",
-                        c.filename, c.chunk_index, c.score, gap_cutoff
-                    )
-                    continue
-                chunks.append(c)
+            # Apply initial dense score floor
+            if floor > 0.0:
+                valid_candidates = [c for c in valid_candidates if (c.dense_score or c.score) >= floor]
+
+            if valid_candidates:
+                if settings.RERANKING_ENABLED and rerank and len(valid_candidates) > 1:
+                    valid_candidates = flash_rerank_chunks(query, valid_candidates, top_k=candidate_limit)
+                else:
+                    valid_candidates.sort(key=lambda c: c.score, reverse=True)
+
+                top_score = valid_candidates[0].score
+                gap_cutoff = top_score - gap if gap is not None else float("-inf")
+                logger.info("Top score for query is %.4f. Gap cutoff is %.4f (max_gap=%s)", top_score, gap_cutoff, gap)
+
+                for c in valid_candidates:
+                    # Apply relative score gap limit
+                    if c.score < gap_cutoff:
+                        logger.info(
+                            "Filtering out chunk filename='%s' index=%d (score=%.4f < gap_cutoff=%.4f)",
+                            c.filename, c.chunk_index, c.score, gap_cutoff
+                        )
+                        continue
+                    chunks.append(c)
+                    if len(chunks) >= top_k:
+                        break
 
     logger.info(
         "Retrieved %d chunks above threshold=%.3f (gap=%s) for query (top_k=%d)",

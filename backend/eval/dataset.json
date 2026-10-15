@@ -606,5 +606,137 @@
         "content": "10 per minute per IP."
       }
     ]
+  },
+  {
+    "id": 49,
+    "question": "What is the unauthenticated client sliding window and burst allowance limit?",
+    "expected_sources": [
+      "rate_limits_and_quotas.md"
+    ],
+    "expected_section": "Multi-Tier Rate Limiting Architecture",
+    "category": "technical_numeric",
+    "difficulty": "medium",
+    "ground_truth": "60 requests per minute with up to 10 requests allowed within a 2-second burst window."
+  },
+  {
+    "id": 50,
+    "question": "How many queries and document uploads are allowed daily on the Pro tier?",
+    "expected_sources": [
+      "rate_limits_and_quotas.md"
+    ],
+    "expected_section": "Multi-Tier Rate Limiting Architecture",
+    "category": "factual",
+    "difficulty": "easy",
+    "ground_truth": "Pro tier permits up to 500 query requests and 50 document uploads per day."
+  },
+  {
+    "id": 51,
+    "question": "What is the Redis key TTL and LRU fallback capacity for leaky bucket rate limiting?",
+    "expected_sources": [
+      "rate_limits_and_quotas.md"
+    ],
+    "expected_section": "Leaky Bucket Algorithm Implementation",
+    "category": "technical_numeric",
+    "difficulty": "hard",
+    "ground_truth": "Redis key TTL is 120 seconds, and the in-memory LRU fallback holds up to 10,000 active client IP hashes."
+  },
+  {
+    "id": 52,
+    "question": "When does the circuit breaker open and how long does it remain open?",
+    "expected_sources": [
+      "rate_limits_and_quotas.md"
+    ],
+    "expected_section": "LLM Provider Quota Management & Backoff",
+    "category": "factual",
+    "difficulty": "medium",
+    "ground_truth": "The circuit breaker opens if a provider fails 5 consecutive requests within 30 seconds, staying open for 60 seconds."
+  },
+  {
+    "id": 53,
+    "question": "What is the smoothing constant k in the Reciprocal Rank Fusion formula?",
+    "expected_sources": [
+      "hybrid_retrieval_and_reranking.md"
+    ],
+    "expected_section": "Reciprocal Rank Fusion (RRF) Formulation",
+    "category": "technical_numeric",
+    "difficulty": "easy",
+    "ground_truth": "The smoothing constant k is set to 60."
+  },
+  {
+    "id": 54,
+    "question": "What are the default dense and sparse weights in the RRF calculation?",
+    "expected_sources": [
+      "hybrid_retrieval_and_reranking.md"
+    ],
+    "expected_section": "Reciprocal Rank Fusion (RRF) Formulation",
+    "category": "technical_numeric",
+    "difficulty": "medium",
+    "ground_truth": "Dense weight is 0.65 and sparse lexical weight is 0.35."
+  },
+  {
+    "id": 55,
+    "question": "How many candidate chunks are evaluated by the flash reranker before returning the top 5?",
+    "expected_sources": [
+      "hybrid_retrieval_and_reranking.md"
+    ],
+    "expected_section": "Flash Cross-Encoder Reranker",
+    "category": "technical_numeric",
+    "difficulty": "medium",
+    "ground_truth": "The top N = 15 candidates are scored by the cross-encoder flash reranker."
+  },
+  {
+    "id": 56,
+    "question": "What boost multiplier is awarded to matching contiguous 2-gram and 3-gram phrases during reranking?",
+    "expected_sources": [
+      "hybrid_retrieval_and_reranking.md"
+    ],
+    "expected_section": "Flash Cross-Encoder Reranker",
+    "category": "technical_numeric",
+    "difficulty": "hard",
+    "ground_truth": "A 1.40x boost multiplier is granted for contiguous phrase matches."
+  },
+  {
+    "id": 57,
+    "question": "What is the maximum allowed latency overhead for the reranking stage?",
+    "expected_sources": [
+      "hybrid_retrieval_and_reranking.md"
+    ],
+    "expected_section": "Flash Cross-Encoder Reranker",
+    "category": "factual",
+    "difficulty": "easy",
+    "ground_truth": "The reranking latency overhead is capped at under 15 milliseconds."
+  },
+  {
+    "id": 58,
+    "question": "Why do dense embeddings struggle with exact code symbols and how is it solved?",
+    "expected_sources": [
+      "hybrid_retrieval_and_reranking.md"
+    ],
+    "expected_section": "The Semantic vs Lexical Gap",
+    "category": "conceptual",
+    "difficulty": "medium",
+    "ground_truth": "Dense embeddings produce false positives on technical symbols and acronyms, which is solved by hybridizing with sparse lexical search via RRF."
+  },
+  {
+    "id": 59,
+    "question": "How does the system prevent cascading downstream provider failures when reaching token ceilings?",
+    "expected_sources": [
+      "rate_limits_and_quotas.md"
+    ],
+    "expected_section": "LLM Provider Quota Management & Backoff",
+    "category": "conceptual",
+    "difficulty": "medium",
+    "ground_truth": "Through jittered exponential backoff (500ms initial delay up to 8s), a maximum retry budget of 3, and a 60-second circuit breaker."
+  },
+  {
+    "id": 60,
+    "question": "What boost factor do headings receive in the second-stage reranker?",
+    "expected_sources": [
+      "hybrid_retrieval_and_reranking.md"
+    ],
+    "expected_section": "Flash Cross-Encoder Reranker",
+    "category": "technical_numeric",
+    "difficulty": "hard",
+    "ground_truth": "Matching markdown headers receive a 1.25x boost factor."
   }
 ]

@@ -91,6 +91,7 @@ class SourceCitation(BaseModel):
     page_number: int
     chunk_index: int
     text_snippet: str = Field(..., description="First 300 chars of the chunk text.")
+    full_text: str | None = Field(default=None, description="Full text of the retrieved chunk.")
     score: float = Field(..., description="Cosine similarity score (0–1).")
 
 

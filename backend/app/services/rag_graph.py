@@ -174,6 +174,7 @@ def to_sources(chunks: list[RetrievedChunk], images: dict[tuple[str, int], list[
             "page_number": c.page_number,
             "chunk_index": c.chunk_index,
             "text_snippet": c.text[:300],
+            "full_text": c.text,
             "score": round(c.score, 4),
             # Pictures stored with this document page (figures, or the image itself): GET /assets/{id}
             "images": images.get((c.document_id, c.page_number), []),
@@ -417,6 +418,7 @@ async def stream_rag(
     }
 
     sources_emitted = False
+    fallback_emitted = False
     total_chars = 0
 
     try:
@@ -424,8 +426,23 @@ async def stream_rag(
             kind: str = event["event"]
             name: str = event.get("name", "")
 
+            # ── Fallback model detection ───────────────────────────────────────
+            if kind == "on_chat_model_start" and not fallback_emitted:
+                meta = event.get("metadata", {})
+                tags = event.get("tags", [])
+                if meta.get("is_fallback") or "fallback_llm" in tags:
+                    model_name = meta.get("model") or name or "backup model"
+                    provider = meta.get("provider") or ""
+                    yield {
+                        "type": "model_switched",
+                        "model": model_name,
+                        "provider": provider,
+                        "message": f"Primary model hit rate limits; seamlessly switched to {model_name}.",
+                    }
+                    fallback_emitted = True
+
             # ── After retrieve node: emit sources ──────────────────────────────
-            if kind == "on_chain_end" and name == "retrieve" and not sources_emitted:
+            elif kind == "on_chain_end" and name == "retrieve" and not sources_emitted:
                 output = event["data"].get("output", {})
                 sources: list[dict] = output.get("sources", [])
                 yield {
@@ -439,6 +456,18 @@ async def stream_rag(
             elif kind == "on_chat_model_stream":
                 if event.get("metadata", {}).get("langgraph_node") != "generate":
                     continue
+                meta = event.get("metadata", {})
+                tags = event.get("tags", [])
+                if (meta.get("is_fallback") or "fallback_llm" in tags) and not fallback_emitted:
+                    model_name = meta.get("model") or "backup model"
+                    provider = meta.get("provider") or ""
+                    yield {
+                        "type": "model_switched",
+                        "model": model_name,
+                        "provider": provider,
+                        "message": f"Primary model hit rate limits; seamlessly switched to {model_name}.",
+                    }
+                    fallback_emitted = True
                 chunk = event["data"].get("chunk")
                 if chunk is None:
                     continue

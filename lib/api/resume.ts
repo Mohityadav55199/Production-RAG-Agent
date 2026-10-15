@@ -80,7 +80,7 @@ export interface TailorResult {
   jd: JdInfo;
 }
 
-export type TemplateName = "classic" | "compact" | "skills_first";
+export type TemplateName = "classic" | "compact" | "skills_first" | "student";
 
 export interface RenderOptions {
   template: TemplateName;
@@ -331,3 +331,94 @@ export async function downloadGenerationFile(id: string, kind: "pdf" | "tex", fi
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+// ── Job Tracker & Outreach Types and APIs ────────────────────────────────────
+
+export type JobStatus = "saved" | "applied" | "interviewing" | "offered" | "rejected" | "archived";
+
+export interface JobApplication {
+  id: string;
+  company: string;
+  job_title: string;
+  job_url: string | null;
+  location: string | null;
+  salary: string | null;
+  status: JobStatus;
+  resume_generation_id: string | null;
+  resume_version_name: string | null;
+  ats_score: number | null;
+  jd_text: string | null;
+  notes: string | null;
+  applied_date: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CoverLetterResult {
+  subject: string;
+  salutation: string;
+  opening: string;
+  body_paragraphs: string[];
+  closing: string;
+  sign_off: string;
+  full_text: string;
+  warnings: string[];
+}
+
+export interface RecruiterMessageResult {
+  subject: string;
+  preview: string;
+  message: string;
+  highlight_points: string[];
+  platform: "linkedin" | "email";
+  warnings: string[];
+}
+
+export async function listJobs(status?: string): Promise<JobApplication[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return apiFetch<JobApplication[]>(`/resume/jobs${query}`);
+}
+
+export function createJob(body: Partial<JobApplication> & { company: string; job_title: string }): Promise<JobApplication> {
+  return apiFetch<JobApplication>("/resume/jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function getJob(id: string): Promise<JobApplication> {
+  return apiFetch<JobApplication>(`/resume/jobs/${id}`);
+}
+
+export function updateJob(id: string, body: Partial<JobApplication>): Promise<JobApplication> {
+  return apiFetch<JobApplication>(`/resume/jobs/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteJob(id: string): Promise<void> {
+  return apiFetch<void>(`/resume/jobs/${id}`, { method: "DELETE" });
+}
+
+export function generateCoverLetter(generationId: string): Promise<CoverLetterResult> {
+  return apiFetch<CoverLetterResult>(`/resume/generations/${generationId}/cover-letter`, {
+    method: "POST",
+    timeout: 90000,
+  });
+}
+
+export function generateRecruiterMessage(
+  generationId: string,
+  platform: "linkedin" | "email" = "linkedin"
+): Promise<RecruiterMessageResult> {
+  return apiFetch<RecruiterMessageResult>(`/resume/generations/${generationId}/recruiter-message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ platform }),
+    timeout: 90000,
+  });
+}
+

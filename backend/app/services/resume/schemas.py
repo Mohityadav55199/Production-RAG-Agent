@@ -108,7 +108,7 @@ class RenderOptions(BaseModel):
     """Layout choices for the generated PDF. Every field is a fixed whitelist, so these values can be put into
     LaTeX without escaping and a client can never inject commands through them."""
 
-    template: Literal["classic", "compact", "skills_first"] = "classic"
+    template: Literal["classic", "compact", "skills_first", "student"] = "classic"
     font_pt: Literal[10, 11, 12] = 10
     margin_in: Literal[0.5, 0.6, 0.75, 1.0] = 0.6
 

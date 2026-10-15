@@ -112,6 +112,9 @@ def get_configured_llm(
         api_key=primary_key,
         temperature=getattr(settings, "LLM_TEMPERATURE", 0.1),
         streaming=True,
+    ).with_config(
+        tags=["primary_llm", f"model:{primary_model}"],
+        metadata={"is_fallback": False, "model": primary_model, "provider": primary_provider},
     )
 
     # ── Fallback Model Chain Resolution ───────────────────────────────────────
@@ -132,7 +135,7 @@ def get_configured_llm(
     seen_models = {primary_model}
 
     for entry in model_entries:
-        # Supports format "provider:model" (e.g. "gemini:gemini-2.5-flash") or simple "model" (e.g. "mixtral-8x7b-32768")
+        # Supports format "provider:model" (e.g. "gemini:gemini-2.5-flash") or simple "model" (e.g. "openai/gpt-oss-20b")
         if ":" in entry:
             prov, mod = entry.split(":", 1)
             prov = prov.strip().lower()
@@ -161,6 +164,9 @@ def get_configured_llm(
                 api_key=key,
                 temperature=getattr(settings, "FALLBACK_LLM_TEMPERATURE", 0.1),
                 streaming=True,
+            ).with_config(
+                tags=["fallback_llm", f"model:{mod}"],
+                metadata={"is_fallback": True, "model": mod, "provider": prov},
             )
             fallbacks.append(fb_llm)
         except Exception as exc:
@@ -168,7 +174,7 @@ def get_configured_llm(
 
     # Emergency fallback if list was empty or couldn't resolve
     if not fallbacks and settings.GROQ_API_KEY:
-        for backup in ["llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]:
+        for backup in ["llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]:
             if backup not in seen_models:
                 fallbacks.append(
                     build_chat_model(
@@ -177,6 +183,9 @@ def get_configured_llm(
                         api_key=settings.GROQ_API_KEY,
                         temperature=0.1,
                         streaming=True,
+                    ).with_config(
+                        tags=["fallback_llm", f"model:{backup}"],
+                        metadata={"is_fallback": True, "model": backup, "provider": "groq"},
                     )
                 )
                 seen_models.add(backup)

@@ -224,7 +224,9 @@ export function normalizeSources(raw: unknown): QuerySource[] {
         "snippet",
         "text_snippet",
       ]),
+      fullText: pick<string>(obj, ["full_text", "fullText", "text", "content"]),
       page: pick<number>(obj, ["page", "page_number"]),
+      chunkIndex: pick<number>(obj, ["chunk_index", "chunkIndex", "index"]),
       score: pick<number>(obj, ["score", "relevance"]),
       images: Array.isArray(obj.images) ? obj.images.map(String) : [],
     };

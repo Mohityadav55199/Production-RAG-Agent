@@ -25,9 +25,10 @@ from sqlalchemy import delete, func, select
 from app.config import get_settings
 from app.services.auth import CurrentUser, get_current_user
 from app.db.postgres import get_db_session
-from app.db.resume_models import Resume, ResumeGeneration
+from app.db.resume_models import JobApplication, Resume, ResumeGeneration
 from app.services.resume import ats, library
 from app.services.resume.agents import analyze_jd, regenerate_bullet, run_tailoring, score_profile, score_text
+from app.services.resume.outreach import generate_cover_letter, generate_recruiter_message
 from app.services.resume.review import annotate, claims_check, find_item, gap_report
 from app.services.resume.schemas import JDAnalysis, Profile, RenderOptions
 from app.utils.rate_limit import SlidingWindowLimiter
@@ -580,3 +581,220 @@ async def delete_generation(generation_id: uuid.UUID, user: CurrentUser = Depend
             delete(ResumeGeneration).where(ResumeGeneration.id == generation_id, ResumeGeneration.user_id == user.key)
         )
     return {"deleted": str(generation_id)}
+
+
+# ── Grounded Cover Letter & Recruiter Outreach ───────────────────────────────
+
+class OutreachOptions(BaseModel):
+    platform: Literal["linkedin", "email"] = "linkedin"
+
+
+@router.post("/generations/{generation_id}/cover-letter", summary="Generate grounded cover letter from a tailored run")
+async def generation_cover_letter(
+    generation_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    g = await _get_generation(generation_id, user)
+    stored = g.report or {}
+    if not stored.get("jd") or not g.jd_text:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This run has no job description to tailor against.")
+
+    library_profile, corpus = await _library_for(g)
+    if library_profile is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The resumes for this run are no longer in your library.")
+
+    _check_edit_budget(user.key)
+    jd = JDAnalysis.model_validate(stored["jd"])
+    try:
+        letter = await generate_cover_letter(library_profile, jd, g.jd_text, corpus)
+    except Exception as exc:
+        logger.warning("Cover letter generation failed: %s", exc)
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Could not generate cover letter. Try again in a moment.") from exc
+    return letter
+
+
+@router.post("/generations/{generation_id}/recruiter-message", summary="Generate grounded recruiter outreach message")
+async def generation_recruiter_message(
+    generation_id: uuid.UUID,
+    body: OutreachOptions = OutreachOptions(),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    g = await _get_generation(generation_id, user)
+    stored = g.report or {}
+    if not stored.get("jd") or not g.jd_text:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This run has no job description to tailor against.")
+
+    library_profile, corpus = await _library_for(g)
+    if library_profile is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The resumes for this run are no longer in your library.")
+
+    _check_edit_budget(user.key)
+    jd = JDAnalysis.model_validate(stored["jd"])
+    try:
+        msg = await generate_recruiter_message(library_profile, jd, g.jd_text, platform=body.platform, corpus=corpus)
+    except Exception as exc:
+        logger.warning("Recruiter message generation failed: %s", exc)
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Could not generate recruiter message. Try again in a moment.") from exc
+    return msg
+
+
+# ── Job Library & Application Tracker ────────────────────────────────────────
+
+class JobCreateRequest(BaseModel):
+    company: str = Field(..., max_length=200)
+    job_title: str = Field(..., max_length=200)
+    job_url: str | None = Field(None, max_length=500)
+    location: str | None = Field(None, max_length=200)
+    salary: str | None = Field(None, max_length=100)
+    status: Literal["saved", "applied", "interviewing", "offered", "rejected", "archived"] = "saved"
+    resume_generation_id: uuid.UUID | None = None
+    resume_version_name: str | None = Field(None, max_length=200)
+    ats_score: int | None = None
+    jd_text: str | None = None
+    notes: str | None = None
+    applied_date: datetime | None = None
+
+
+class JobUpdateRequest(BaseModel):
+    company: str | None = Field(None, max_length=200)
+    job_title: str | None = Field(None, max_length=200)
+    job_url: str | None = Field(None, max_length=500)
+    location: str | None = Field(None, max_length=200)
+    salary: str | None = Field(None, max_length=100)
+    status: Literal["saved", "applied", "interviewing", "offered", "rejected", "archived"] | None = None
+    resume_generation_id: uuid.UUID | None = None
+    resume_version_name: str | None = Field(None, max_length=200)
+    ats_score: int | None = None
+    jd_text: str | None = None
+    notes: str | None = None
+    applied_date: datetime | None = None
+
+
+def _job_summary(j: JobApplication) -> dict:
+    return {
+        "id": str(j.id),
+        "company": j.company,
+        "job_title": j.job_title,
+        "job_url": j.job_url,
+        "location": j.location,
+        "salary": j.salary,
+        "status": j.status,
+        "resume_generation_id": str(j.resume_generation_id) if j.resume_generation_id else None,
+        "resume_version_name": j.resume_version_name,
+        "ats_score": j.ats_score,
+        "jd_text": j.jd_text,
+        "notes": j.notes,
+        "applied_date": j.applied_date.isoformat() if j.applied_date else None,
+        "created_at": j.created_at.isoformat() if j.created_at else None,
+        "updated_at": j.updated_at.isoformat() if j.updated_at else None,
+    }
+
+
+@router.get("/jobs", summary="List saved jobs and applications")
+async def list_jobs(
+    status: str | None = None,
+    user: CurrentUser = Depends(get_current_user),
+) -> list[dict]:
+    query = select(JobApplication).where(JobApplication.user_id == user.key)
+    if status:
+        query = query.where(JobApplication.status == status)
+    query = query.order_by(JobApplication.updated_at.desc())
+
+    async with get_db_session() as session:
+        result = await session.execute(query)
+        rows = result.scalars().all()
+    return [_job_summary(r) for r in rows]
+
+
+@router.post("/jobs", status_code=status.HTTP_201_CREATED, summary="Save a job application")
+async def create_job(
+    body: JobCreateRequest,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    row = JobApplication(
+        id=uuid.uuid4(),
+        user_id=user.key,
+        company=body.company.strip(),
+        job_title=body.job_title.strip(),
+        job_url=(body.job_url.strip() if body.job_url else None),
+        location=(body.location.strip() if body.location else None),
+        salary=(body.salary.strip() if body.salary else None),
+        status=body.status,
+        resume_generation_id=body.resume_generation_id,
+        resume_version_name=body.resume_version_name,
+        ats_score=body.ats_score,
+        jd_text=body.jd_text,
+        notes=body.notes,
+        applied_date=body.applied_date,
+    )
+    async with get_db_session() as session:
+        session.add(row)
+    return _job_summary(row)
+
+
+@router.get("/jobs/{job_id}", summary="Get job application detail")
+async def get_job_detail(
+    job_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    async with get_db_session() as session:
+        row = await session.get(JobApplication, job_id)
+        if row is None or row.user_id != user.key:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Job application not found.")
+        return _job_summary(row)
+
+
+@router.patch("/jobs/{job_id}", summary="Update a job application")
+async def update_job(
+    job_id: uuid.UUID,
+    body: JobUpdateRequest,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    async with get_db_session() as session:
+        row = await session.get(JobApplication, job_id)
+        if row is None or row.user_id != user.key:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Job application not found.")
+
+        if body.company is not None:
+            row.company = body.company.strip()
+        if body.job_title is not None:
+            row.job_title = body.job_title.strip()
+        if body.job_url is not None:
+            row.job_url = body.job_url.strip() or None
+        if body.location is not None:
+            row.location = body.location.strip() or None
+        if body.salary is not None:
+            row.salary = body.salary.strip() or None
+        if body.status is not None:
+            row.status = body.status
+            if body.status == "applied" and not row.applied_date:
+                row.applied_date = datetime.now(timezone.utc)
+        if body.resume_generation_id is not None:
+            row.resume_generation_id = body.resume_generation_id
+        if body.resume_version_name is not None:
+            row.resume_version_name = body.resume_version_name
+        if body.ats_score is not None:
+            row.ats_score = body.ats_score
+        if body.jd_text is not None:
+            row.jd_text = body.jd_text
+        if body.notes is not None:
+            row.notes = body.notes
+        if body.applied_date is not None:
+            row.applied_date = body.applied_date
+
+        row.updated_at = datetime.now(timezone.utc)
+        return _job_summary(row)
+
+
+@router.delete("/jobs/{job_id}", summary="Delete a job application")
+async def delete_job(
+    job_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    async with get_db_session() as session:
+        row = await session.get(JobApplication, job_id)
+        if row is None or row.user_id != user.key:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Job application not found.")
+        await session.delete(row)
+    return {"deleted": str(job_id)}
+

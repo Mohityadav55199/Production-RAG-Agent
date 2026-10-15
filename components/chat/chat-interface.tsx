@@ -16,6 +16,7 @@ import {
   ThumbsUp,
   User,
   X,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -29,6 +30,7 @@ import { submitFeedback, type AnswerRating } from "@/lib/api/feedback";
 import { streamQuery, type AnswerStyle } from "@/lib/api/query";
 import { parseSourceKey } from "@/lib/api/sources";
 import { SourceSelect, useKnowledgeSources } from "@/components/chat/source-select";
+import { CitationChips } from "@/components/chat/citation-chips";
 import { useApp } from "@/lib/context/app-context";
 import { suggestedQuestions, type ChatMessage } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -219,6 +221,14 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                 msg.id === assistantId ? { ...msg, sources } : msg
               )
             );
+          },
+          onModelSwitched: (fallbackNotice) => {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantId ? { ...msg, fallbackNotice } : msg
+              )
+            );
+            toast.info(`Primary provider rate-limited: Switched to ${fallbackNotice.model}`);
           },
           onDone: () => {
             setMessages((prev) =>
@@ -431,7 +441,18 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                       )}
                     >
                       {message.role === "assistant" ? (
-                        <div className="prose prose-sm dark:prose-invert max-w-none relative group">
+                        <>
+                          {message.fallbackNotice && (
+                            <div className="mb-2.5 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-200">
+                              <Zap className="size-3.5 shrink-0 text-amber-500 animate-pulse" />
+                              <span>
+                                <strong>Model switched:</strong> Using{" "}
+                                <span className="font-semibold underline decoration-amber-500/50">{message.fallbackNotice.model}</span>{" "}
+                                (primary LLM rate-limited or unavailable).
+                              </span>
+                            </div>
+                          )}
+                          <div className="prose prose-sm dark:prose-invert max-w-none relative group">
                           <SafeMarkdown>
                             {message.content ||
                               (message.isStreaming ? "▍" : "")}
@@ -458,7 +479,8 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                             </div>
                           )}
                         </div>
-                      ) : (
+                      </>
+                    ) : (
                         <>
                           {message.attachments && message.attachments.length > 0 && (
                             <div className="mb-2 flex flex-wrap gap-2">
@@ -510,50 +532,7 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                       )}
 
                       {message.sources && message.sources.length > 0 && (
-                        <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
-                          <p className="text-xs font-medium text-muted-foreground">
-                            Sources
-                          </p>
-                          {message.sources.map((source, i) => (
-                            <div
-                              key={i}
-                              className="rounded-lg bg-background/60 px-3 py-2 text-xs"
-                            >
-                              {source.documentName && (
-                                <p className="font-medium">
-                                  {source.documentName}
-                                  {source.page && !source.documentName.includes("/")
-                                    ? ` · p.${source.page}`
-                                    : ""}
-                                </p>
-                              )}
-                              {source.chunkText && (
-                                <p className="mt-1 text-muted-foreground line-clamp-3">
-                                  {source.chunkText}
-                                </p>
-                              )}
-                              {source.images && source.images.length > 0 && (
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  {source.images.map((assetId, n) => (
-                                    <button
-                                      key={assetId}
-                                      type="button"
-                                      onClick={() => setLightbox({ id: assetId, title: source.documentName ?? "Image" })}
-                                      aria-label={`View image ${n + 1} from ${source.documentName ?? "the document"}`}
-                                      className="overflow-hidden rounded-md border outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
-                                    >
-                                      <AuthImage
-                                        assetId={assetId}
-                                        alt={`Image ${n + 1} from ${source.documentName ?? "the document"}`}
-                                        className="size-20 object-cover"
-                                      />
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
+                        <CitationChips sources={message.sources} />
                       )}
 
                       {message.error && lastQuery && !message.isStreaming && (

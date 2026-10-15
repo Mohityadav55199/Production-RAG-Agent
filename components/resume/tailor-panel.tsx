@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import {
   AlertTriangle,
+  Briefcase,
   Check,
   CheckCircle2,
   Copy,
@@ -17,6 +18,7 @@ import {
 import { toast } from "sonner";
 import {
   DEFAULT_RENDER_OPTIONS,
+  createJob,
   downloadGenerationFile,
   extractText,
   streamTailor,
@@ -26,6 +28,7 @@ import {
   type TailorStep,
 } from "@/lib/api/resume";
 import { LayoutOptions } from "@/components/resume/layout-options";
+import { OutreachPanel } from "@/components/resume/outreach-panel";
 import { ScoreReport, ScoreRing } from "@/components/resume/score-report";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +68,26 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }
   const [copied, setCopied] = useState(false);
   const [reading, setReading] = useState(false);
   const [layout, setLayout] = useState<RenderOptions>(DEFAULT_RENDER_OPTIONS);
+  const [tracked, setTracked] = useState(false);
+
+  const handleTrackJob = async () => {
+    if (!result) return;
+    try {
+      await createJob({
+        company: result.jd.company || "Company",
+        job_title: result.jd.title || "Position",
+        status: "saved",
+        ats_score: result.score,
+        resume_generation_id: result.generation_id,
+        resume_version_name: result.output_name,
+        jd_text: jd,
+      });
+      setTracked(true);
+      toast.success("Saved to Job Tracker!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to track job");
+    }
+  };
 
   const noLibrary = resumes.length === 0;
   const canRun = !running && !noLibrary && jd.trim().length >= 80;
@@ -307,6 +330,10 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }
                       </Button>
                     </>
                   )}
+                  <Button size="sm" variant="outline" onClick={handleTrackJob} disabled={tracked}>
+                    <Briefcase className="size-4" />
+                    {tracked ? "Tracked in Jobs" : "Save to Tracker"}
+                  </Button>
                 </div>
                 {!result.pdf_available && result.tex_available && (
                   <p className="mt-2 text-xs text-muted-foreground">
@@ -318,6 +345,13 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }
           </CardHeader>
           <CardContent className="space-y-5">
             <ScoreReport report={result.report} threshold={result.threshold} />
+
+            {/* Grounded Outreach: Cover Letter & Recruiter Message */}
+            <OutreachPanel
+              generationId={result.generation_id}
+              company={result.jd.company}
+              jobTitle={result.jd.title}
+            />
 
             {result.warnings.length > 0 && (
               <details className="rounded-lg border bg-muted/30 text-sm">

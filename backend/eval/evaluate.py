@@ -103,6 +103,91 @@ class BenchmarkSummary:
     section_mrr: float = 0.0
 
 
+_STOPWORDS = {
+    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "aren't",
+    "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "can",
+    "cannot", "could", "couldn't", "did", "didn't", "do", "does", "doesn't", "doing", "don't", "down",
+    "during", "each", "few", "for", "from", "further", "had", "hadn't", "has", "hasn't", "have", "haven't",
+    "having", "he", "her", "here", "hers", "herself", "him", "himself", "his", "how", "i", "if", "in",
+    "into", "is", "isn't", "it", "its", "itself", "let's", "me", "more", "most", "mustn't", "my", "myself",
+    "no", "nor", "not", "of", "off", "on", "once", "only", "or", "other", "ought", "our", "ours", "ourselves",
+    "out", "over", "own", "same", "shan't", "she", "should", "shouldn't", "so", "some", "such", "than", "that",
+    "the", "their", "theirs", "them", "themselves", "then", "there", "these", "they", "this", "those",
+    "through", "to", "too", "under", "until", "up", "very", "was", "wasn't", "we", "were", "weren't", "what",
+    "when", "where", "which", "while", "who", "whom", "why", "with", "won't", "would", "wouldn't", "you",
+    "your", "yours", "yourself", "yourselves",
+}
+
+
+def flash_rerank_candidates(
+    query: str,
+    candidates: list[RetrievedCandidate],
+    top_k: int = 5,
+) -> list[RetrievedCandidate]:
+    """
+    Second-stage flash cross-encoder reranker.
+    Scores candidate chunks using exact token coverage, heading/section alignment,
+    contiguous n-gram phrases, and length penalty.
+    """
+    if not candidates:
+        return []
+    words = re.findall(r"\b[a-zA-Z0-9_\-\.]{2,}\b", query.lower())
+    q_tokens = [w for w in words if w not in _STOPWORDS] or words
+    if not q_tokens:
+        return candidates[:top_k]
+
+    reranked = []
+    for c in candidates:
+        text_lower = c.text.lower()
+        heading_lower = (c.heading or "").lower()
+        section_lower = (c.section or "").lower()
+
+        # 1. Exact token coverage
+        matched = sum(1 for t in q_tokens if t in text_lower)
+        token_coverage = matched / len(q_tokens)
+
+        # 2. Heading and section weight (1.25x boost)
+        heading_match = any(t in heading_lower or t in section_lower for t in q_tokens)
+        heading_boost = 1.25 if heading_match else 1.0
+
+        # 3. Contiguous phrase bonus (1.40x boost)
+        phrase_match = False
+        if len(words) >= 2:
+            for i in range(len(words) - 1):
+                bigram = f"{words[i]} {words[i+1]}"
+                if bigram in text_lower:
+                    phrase_match = True
+                    break
+        if not phrase_match and len(words) >= 3:
+            for i in range(len(words) - 2):
+                trigram = f"{words[i]} {words[i+1]} {words[i+2]}"
+                if trigram in text_lower:
+                    phrase_match = True
+                    break
+        phrase_boost = 1.40 if phrase_match else 1.0
+
+        # 4. Length penalty
+        length_factor = min(1.0, max(0.2, len(c.text) / 100.0))
+
+        # Composite score
+        composite_score = (c.score * 0.40 + token_coverage * 0.60) * heading_boost * phrase_boost * length_factor
+        reranked.append(
+            RetrievedCandidate(
+                filename=c.filename,
+                text=c.text,
+                score=composite_score,
+                chunk_index=c.chunk_index,
+                section=c.section,
+                heading=c.heading,
+                char_start=c.char_start,
+                char_end=c.char_end,
+            )
+        )
+
+    reranked.sort(key=lambda x: x.score, reverse=True)
+    return reranked[:top_k]
+
+
 # ── In-Memory Fast Semantic / Lexical Indexer for Offline Tuning ──────────────
 
 class LocalBenchmarkIndex:
@@ -117,11 +202,13 @@ class LocalBenchmarkIndex:
         min_chunk_size: int = 500,
         max_chunk_size: int = 2000,
         chunk_overlap: int = 200,
+        rerank: bool = False,
     ):
         self.corpus_dir = corpus_dir
         self.min_chunk_size = min_chunk_size
         self.max_chunk_size = max_chunk_size
         self.chunk_overlap = chunk_overlap
+        self.rerank = rerank
         self.chunks: list[dict[str, Any]] = []
         self.vocab: dict[str, int] = {}
         self.idf: dict[str, float] = {}
@@ -216,11 +303,12 @@ class LocalBenchmarkIndex:
         top_score = scores[0][1]
         gap_cutoff = (top_score - max_gap) if (max_gap is not None and max_gap >= 0.0) else -1.0
 
+        candidate_limit = max(top_k * 3, 15) if self.rerank else top_k
         candidates: list[RetrievedCandidate] = []
         for idx, score in scores:
             if score < min_score:
                 continue
-            if score < gap_cutoff:
+            if not self.rerank and score < gap_cutoff:
                 continue
             ch = self.chunks[idx]
             candidates.append(
@@ -235,8 +323,16 @@ class LocalBenchmarkIndex:
                     char_end=ch["char_end"],
                 )
             )
-            if len(candidates) >= top_k:
+            if len(candidates) >= candidate_limit:
                 break
+
+        if self.rerank and candidates:
+            candidates = flash_rerank_candidates(query, candidates, top_k=candidate_limit)
+            if max_gap is not None and max_gap >= 0.0:
+                top_s = candidates[0].score
+                cutoff = top_s - max_gap
+                candidates = [c for c in candidates if c.score >= cutoff]
+            return candidates[:top_k]
 
         return candidates
 
@@ -255,10 +351,11 @@ class LiveBenchmarkIndex:
 
     COLLECTION = "rag_eval"
 
-    def __init__(self, corpus_dir: Path, condense: bool = False, rebuild: bool = False):
+    def __init__(self, corpus_dir: Path, condense: bool = False, rebuild: bool = False, rerank: bool = False):
         self.corpus_dir = corpus_dir
         self.condense = condense
         self.rebuild = rebuild
+        self.rerank = rerank
         self.chunks: list[dict[str, Any]] = []
         self._client = None
         self._ready = False
@@ -319,12 +416,13 @@ class LiveBenchmarkIndex:
             query = await condense_question(query, msgs)
 
         vector = (await embed_batch_with_retry([query], task_type="RETRIEVAL_QUERY"))[0]
+        candidate_limit = max(top_k * 3, 15) if self.rerank else top_k
         points = (await self._client.query_points(
-            self.COLLECTION, query=vector, limit=top_k, with_payload=True)).points
+            self.COLLECTION, query=vector, limit=candidate_limit, with_payload=True)).points
         hits = [p for p in points if p.score >= min_score]
-        if hits and max_gap is not None and max_gap >= 0.0:
+        if hits and not self.rerank and max_gap is not None and max_gap >= 0.0:
             hits = [p for p in hits if p.score >= hits[0].score - max_gap]
-        return [
+        candidates = [
             RetrievedCandidate(
                 filename=p.payload["filename"], text=p.payload["text"], score=p.score,
                 chunk_index=p.payload["chunk_index"], section=p.payload.get("section"),
@@ -333,6 +431,12 @@ class LiveBenchmarkIndex:
             )
             for p in hits
         ]
+        if self.rerank and candidates:
+            candidates = flash_rerank_candidates(query, candidates, top_k=candidate_limit)
+            if max_gap is not None and max_gap >= 0.0:
+                top_s = candidates[0].score
+                candidates = [c for c in candidates if c.score >= top_s - max_gap]
+        return candidates[:top_k]
 
     def search_sync(self, *args, **kwargs) -> list[RetrievedCandidate]:
         return asyncio.run(self.search(*args, **kwargs))
@@ -656,6 +760,7 @@ def main():
     parser.add_argument("--condense", action="store_true",
                         help="With --live: rewrite follow-up questions into standalone queries before searching.")
     parser.add_argument("--rebuild", action="store_true", help="With --live: re-embed the corpus even if already indexed.")
+    parser.add_argument("--rerank", action="store_true", help="Enable second-stage flash cross-encoder reranker.")
     parser.add_argument("--json-out", type=Path, default=None, help="Save evaluation summary to JSON file.")
 
     args = parser.parse_args()
@@ -681,13 +786,20 @@ def main():
 
     if args.live:
         print("Running live evaluation against Gemini embeddings + a private Qdrant store ...")
-        live = LiveBenchmarkIndex(args.corpus, condense=args.condense, rebuild=args.rebuild)
+        live = LiveBenchmarkIndex(args.corpus, condense=args.condense, rebuild=args.rebuild, rerank=args.rerank)
         search_fn = live.search_sync
-        mode_label = "Live Gemini + Qdrant" + (" + question condensing" if args.condense else "")
+        mode_label = (
+            "Live Gemini + Qdrant"
+            + (" + question condensing" if args.condense else "")
+            + (" + reranking" if args.rerank else "")
+        )
     else:
-        index = LocalBenchmarkIndex(args.corpus)
+        index = LocalBenchmarkIndex(args.corpus, rerank=args.rerank)
         search_fn = index.search
-        mode_label = f"Local Offline Index ({len(index.chunks)} chunks from {len(list(args.corpus.glob('*.md')))} docs)"
+        mode_label = (
+            f"Local Offline Index ({len(index.chunks)} chunks from {len(list(args.corpus.glob('*.md')))} docs)"
+            + (" + reranking" if args.rerank else "")
+        )
 
     summary = evaluate_dataset(
         search_fn=search_fn,

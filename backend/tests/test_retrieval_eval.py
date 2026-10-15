@@ -26,7 +26,7 @@ def test_eval_dataset_integrity():
     """Verify that dataset.json exists and contains exactly 48 valid question/source pairs."""
     assert DATASET_PATH.exists(), f"Missing dataset file: {DATASET_PATH}"
     dataset = load_dataset(DATASET_PATH)
-    assert len(dataset) == 48, f"Expected 48 evaluation items, got {len(dataset)}"
+    assert len(dataset) == 60, f"Expected 60 evaluation items, got {len(dataset)}"
 
     corpus_files = {p.name for p in CORPUS_DIR.glob("*.md")}
     assert len(corpus_files) >= 5, "Corpus must have at least 5 benchmark documents"
@@ -55,7 +55,7 @@ def test_retrieval_metrics_computation():
         ranges=section_ranges(CORPUS_DIR),
     )
 
-    assert summary.total_queries == 48
+    assert summary.total_queries == 60
     assert summary.hit_rate_5 >= 0.90, f"Hit-Rate@5 should be at least 90%, got {summary.hit_rate_5:.2f}"
     assert summary.mrr >= 0.85, f"MRR should be at least 0.85, got {summary.mrr:.4f}"
     assert "factual" in summary.category_breakdown
@@ -94,3 +94,29 @@ def test_score_filtering_impact():
     strict = evaluate_dataset(index.search, dataset, top_k=5, min_score=0.25)
 
     assert strict.hit_rate_5 <= normal.hit_rate_5
+
+
+def test_flash_reranker_improves_metrics():
+    """Verify that second-stage flash cross-encoder reranker improves Section@5 and Section MRR."""
+    dataset = load_dataset(DATASET_PATH)
+    index_baseline = LocalBenchmarkIndex(CORPUS_DIR, rerank=False)
+    index_reranked = LocalBenchmarkIndex(CORPUS_DIR, rerank=True)
+
+    summary_baseline = evaluate_dataset(
+        search_fn=index_baseline.search,
+        dataset=dataset,
+        top_k=5,
+        ranges=section_ranges(CORPUS_DIR),
+    )
+    summary_reranked = evaluate_dataset(
+        search_fn=index_reranked.search,
+        dataset=dataset,
+        top_k=5,
+        ranges=section_ranges(CORPUS_DIR),
+    )
+
+    # Reranking should achieve >= baseline section accuracy and MRR
+    assert summary_reranked.section_hit_5 >= summary_baseline.section_hit_5
+    assert summary_reranked.section_mrr >= summary_baseline.section_mrr
+    assert len(summary_reranked.missed_queries) <= len(summary_baseline.missed_queries)
+

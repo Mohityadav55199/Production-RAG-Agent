@@ -63,6 +63,7 @@ def pipeline(monkeypatch):
     monkeypatch.setattr(agents, "compiler_available", lambda: False)     # score from text; no pdflatex needed
 
     def run(must_have: list[str], threshold: int = THRESHOLD):
+        agents.clear_jd_cache()
         fake = FakeLLM(must_have)
         monkeypatch.setattr(agents, "llm_json", fake)
 

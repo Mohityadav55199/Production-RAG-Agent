@@ -23,18 +23,87 @@ WEIGHTS_WITH_JD = {"keywords": 45, "parsing": 25, "format": 15, "fit": 15}
 WEIGHTS_NO_JD = {"parsing": 60, "format": 40}
 
 SYNONYM_GROUPS = [
-    {"javascript", "js"}, {"typescript", "ts"}, {"node.js", "nodejs", "node"},
-    {"react", "react.js", "reactjs"}, {"vue", "vue.js", "vuejs"}, {"next.js", "nextjs"},
-    {"kubernetes", "k8s"}, {"postgresql", "postgres"}, {"mongodb", "mongo"},
-    {"c++", "cpp"}, {"machine learning", "ml"}, {"natural language processing", "nlp"},
-    {"amazon web services", "aws"}, {"google cloud platform", "gcp", "google cloud"},
+    # Languages & Runtime
+    {"javascript", "js", "ecmascript"},
+    {"typescript", "ts"},
+    {"node.js", "nodejs", "node"},
+    {"python", "py", "python3"},
+    {"golang", "go"},
+    {"c++", "cpp"},
+    {"c#", "csharp", "c-sharp", ".net"},
+    {"rust", "rustlang"},
+    {"ruby", "ruby on rails", "rails"},
+    {"java", "core java"},
+    {"kotlin", "android kotlin"},
+    {"swift", "swiftui", "ios swift"},
+    {"php", "php8"},
+    # Frontend frameworks & styling
+    {"react", "react.js", "reactjs"},
+    {"vue", "vue.js", "vuejs"},
+    {"angular", "angularjs", "angular 2+"},
+    {"next.js", "nextjs", "next"},
+    {"tailwind", "tailwind css", "tailwindcss"},
+    {"sass", "scss"},
+    {"styled components", "styled-components"},
+    {"redux", "redux toolkit", "rtk"},
+    {"html", "html5"},
+    {"css", "css3"},
+    # Backend frameworks
+    {"fastapi", "fast-api"},
+    {"django", "django rest framework", "drf"},
+    {"flask", "flask-restful"},
+    {"spring", "spring boot", "springboot"},
+    {"express", "express.js", "expressjs"},
+    {"nest.js", "nestjs"},
+    # Databases & Caching
+    {"postgresql", "postgres", "psql"},
+    {"mongodb", "mongo"},
+    {"mysql", "mariadb"},
+    {"redis", "in-memory cache", "valkey"},
+    {"elasticsearch", "elastic search", "opensearch", "es"},
+    {"sql", "structured query language", "rdbms"},
+    {"nosql", "no-sql"},
+    {"qdrant", "vector database", "vectordb", "vector store"},
+    {"sqlite", "sqlite3"},
+    # Cloud & DevOps
+    {"amazon web services", "aws"},
+    {"google cloud platform", "gcp", "google cloud"},
+    {"microsoft azure", "azure"},
+    {"kubernetes", "k8s"},
+    {"docker", "containerization", "containers"},
+    {"ci/cd", "cicd", "continuous integration", "continuous deployment", "github actions", "gitlab ci"},
+    {"terraform", "tf", "infrastructure as code", "iac"},
+    {"ansible", "configuration management"},
+    {"linux", "unix", "bash", "shell scripting"},
+    {"nginx", "reverse proxy"},
+    # Architecture & Protocols
     {"rest", "restful", "rest api", "rest apis", "restful api", "restful apis"},
-    {"ci/cd", "cicd", "continuous integration"}, {"large language models", "llm", "llms"},
-    {"retrieval augmented generation", "retrieval-augmented generation", "rag"},
+    {"graphql", "gql"},
+    {"grpc", "g-rpc", "protobuf"},
+    {"websockets", "websocket", "ws"},
+    {"microservices", "microservice architecture"},
+    {"event driven architecture", "event-driven", "kafka", "rabbitmq"},
     {"object oriented programming", "oop", "object-oriented programming"},
     {"data structures and algorithms", "dsa", "data structures", "algorithms"},
-    {"sql", "structured query language"}, {"html", "html5"}, {"css", "css3"},
-    {"golang", "go"},
+    {"system design", "distributed systems"},
+    # AI / ML / Data
+    {"machine learning", "ml"},
+    {"deep learning", "dl"},
+    {"natural language processing", "nlp"},
+    {"computer vision", "cv"},
+    {"large language models", "llm", "llms"},
+    {"retrieval augmented generation", "retrieval-augmented generation", "rag"},
+    {"scikit-learn", "sklearn"},
+    {"pytorch", "torch"},
+    {"tensorflow", "tf"},
+    {"pandas", "numpy"},
+    {"langchain", "langgraph"},
+    {"vector embeddings", "embeddings", "semantic search"},
+    # Testing & Tooling
+    {"unit testing", "unit tests", "pytest", "jest", "junit", "mocha"},
+    {"test driven development", "tdd"},
+    {"git", "github", "gitlab", "version control"},
+    {"agile", "scrum", "kanban"},
 ]
 _SYNONYMS: dict[str, set[str]] = {}
 for _group in SYNONYM_GROUPS:
@@ -162,6 +231,38 @@ def _ambiguous_match(variant: str, text: str) -> bool:
     return bool(re.search(rf"(?i:\b{_CUE_WORDS})\s+{written}(?![A-Za-z0-9+#])", text))
 
 
+def fuzzy_term_in_text(term: str, text: str, threshold: float = 0.88) -> bool:
+    """Fuzzy check for multi-word or compound terms when exact regex fails."""
+    t_clean = term.strip().lower()
+    if t_clean in _AMBIGUOUS_TERMS or len(t_clean) < 4:
+        return False
+
+    t_norm = re.sub(r"[^a-z0-9]", "", t_clean)
+    if not t_norm:
+        return False
+    text_norm = re.sub(r"[^a-z0-9]+", " ", text.lower())
+    words = text_norm.split()
+    if not words:
+        return False
+
+    # Sliding window similarity against word n-grams
+    term_word_count = max(1, len(re.findall(r"[a-z0-9]+", t_clean)))
+    import difflib
+    window_sizes = {1, term_word_count}
+    if term_word_count > 1:
+        window_sizes.add(term_word_count + 1)
+
+    for window_size in window_sizes:
+        for i in range(len(words) - window_size + 1):
+            window = "".join(words[i:i + window_size])
+            if window == t_norm:
+                return True
+            if len(window) >= 4 and abs(len(window) - len(t_norm)) <= 2:
+                if difflib.SequenceMatcher(None, window, t_norm).ratio() >= threshold:
+                    return True
+    return False
+
+
 def term_in_text(term: str, text: str) -> bool:
     for variant in _variants(term):
         if variant in _AMBIGUOUS_TERMS:
@@ -169,7 +270,62 @@ def term_in_text(term: str, text: str) -> bool:
                 return True
         elif _term_regex(variant).search(text):
             return True
+        elif fuzzy_term_in_text(variant, text):
+            return True
     return False
+
+
+_EMBED_SKILL_CACHE: dict[str, list[float]] = {}
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if not norm_a or not norm_b:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+async def match_skills_semantic(
+    target_terms: list[str],
+    candidate_items: list[str],
+    threshold: float = 0.82,
+) -> set[str]:
+    """Find target terms that semantically match candidate items using embedding cosine similarity."""
+    if not target_terms or not candidate_items:
+        return set()
+    from app.services.embedding_service import embed_batch_with_retry
+
+    needed = [t for t in target_terms if t not in _EMBED_SKILL_CACHE]
+    if needed:
+        try:
+            vecs = await embed_batch_with_retry(needed)
+            for t, v in zip(needed, vecs):
+                _EMBED_SKILL_CACHE[t] = v
+        except Exception:
+            return set()
+
+    c_needed = [c for c in candidate_items if c not in _EMBED_SKILL_CACHE]
+    if c_needed:
+        try:
+            vecs = await embed_batch_with_retry(c_needed)
+            for c, v in zip(c_needed, vecs):
+                _EMBED_SKILL_CACHE[c] = v
+        except Exception:
+            pass
+
+    matched: set[str] = set()
+    for t in target_terms:
+        vt = _EMBED_SKILL_CACHE.get(t)
+        if not vt:
+            continue
+        for c in candidate_items:
+            vc = _EMBED_SKILL_CACHE.get(c)
+            if vc and _cosine_similarity(vt, vc) >= threshold:
+                matched.add(t)
+                break
+    return matched
 
 
 def fallback_jd_analysis(jd_text: str) -> JDAnalysis:

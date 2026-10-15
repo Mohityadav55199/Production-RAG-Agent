@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # ── Fallback LLM Configuration ─────────────────────────────────────────────
     ENABLE_LLM_FALLBACK: bool = True
     FALLBACK_LLM_PROVIDER: str = "groq"       # default fallback provider: "groq" | "gemini"
-    FALLBACK_LLM_MODELS: str = "llama-3.1-8b-instant, mixtral-8x7b-32768, gemma2-9b-it"  # comma-separated chain of fallbacks
+    FALLBACK_LLM_MODELS: str = "llama-3.1-8b-instant, openai/gpt-oss-120b, openai/gpt-oss-20b"  # comma-separated chain of fallbacks
     FALLBACK_LLM_MODEL: str = "llama-3.1-8b-instant"
     FALLBACK_LLM_TEMPERATURE: float = 0.1
 
@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     QUERY_REWRITE_ENABLED: bool = True       # rewrite follow-up questions into standalone search queries
     QUERY_REWRITE_MODEL: str = "llama-3.1-8b-instant"   # small, fast Groq model for that rewrite
     MAX_HISTORY_PAIRS: int = 3             # conversation turns kept in context window
+    RERANKING_ENABLED: bool = True           # second-stage flash cross-encoder reranker
+    RERANKING_CANDIDATE_FACTOR: int = 3      # candidate oversampling factor for reranking
 
     # ── Embedding Resiliency ──────────────────────────────────────────────────
     MAX_EMBED_RETRIES: int = 5

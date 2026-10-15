@@ -56,3 +56,25 @@ class ResumeGeneration(Base):
     tex: Mapped[str | None] = mapped_column(Text, nullable=True)
     pdf: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class JobApplication(Base):
+    __tablename__ = "job_applications"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    company: Mapped[str] = mapped_column(String(200), nullable=False)
+    job_title: Mapped[str] = mapped_column(String(200), nullable=False)
+    job_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    salary: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="saved")
+    resume_generation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    resume_version_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    ats_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    jd_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    applied_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
