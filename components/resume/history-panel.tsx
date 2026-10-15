@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Download, FileCode2, Lock, Trash2 } from "lucide-react";
+import { AlertTriangle, Download, FileCode2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteGeneration,
@@ -20,7 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatRelativeTime } from "@/lib/utils";
 
-export function HistoryPanel({ refreshKey }: { refreshKey: number }) {
+export function HistoryPanel({ refreshKey, onOpen }: { refreshKey: number; onOpen: (generationId: string) => void }) {
   const [items, setItems] = useState<GenerationSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -87,24 +87,27 @@ export function HistoryPanel({ refreshKey }: { refreshKey: number }) {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {g.released ? (
-                <>
-                  {g.pdf_available && (
-                    <Button size="sm" variant="outline" onClick={() => download(g, "pdf")}>
-                      <Download className="size-3.5" />
-                      PDF
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={() => download(g, "tex")}>
-                    <FileCode2 className="size-3.5" />
-                    LaTeX
-                  </Button>
-                </>
-              ) : (
+              {!g.released && (
                 <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                  <Lock className="size-3.5" />
-                  Below {g.threshold}, not released
+                  <AlertTriangle className="size-3.5" />
+                  Below {g.threshold}
                 </span>
+              )}
+              <Button size="sm" variant="outline" onClick={() => onOpen(g.id)}>
+                <Pencil className="size-3.5" />
+                Edit
+              </Button>
+              {g.pdf_available && (
+                <Button size="sm" variant="outline" onClick={() => download(g, "pdf")}>
+                  <Download className="size-3.5" />
+                  PDF
+                </Button>
+              )}
+              {g.tex_available && (
+                <Button size="sm" variant="outline" onClick={() => download(g, "tex")}>
+                  <FileCode2 className="size-3.5" />
+                  LaTeX
+                </Button>
               )}
               <Button
                 size="icon"

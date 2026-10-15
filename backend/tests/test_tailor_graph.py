@@ -103,7 +103,7 @@ def test_everything_the_writer_invented_is_stripped(pipeline):
     assert len(best["warnings"]) >= 4
 
 
-def test_unsatisfiable_job_is_withheld_after_three_attempts(pipeline):
+def test_unsatisfiable_job_stays_below_target_after_three_attempts(pipeline):
     fake, _, final = pipeline(["Python", "Kubernetes", "Terraform", "Java", "Spring Boot"])
     best = final["best"]
     assert best["score"] < THRESHOLD

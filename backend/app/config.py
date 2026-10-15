@@ -171,7 +171,7 @@ class Settings(BaseSettings):
     MAX_ASSETS_PER_DOC: int = 40             # figures kept per document
     VISION_REQUESTS_PER_HOUR: int = 40       # per user: image questions + code-screenshot reads
 
-    RESUME_ATS_THRESHOLD: int = 82          # LaTeX/PDF are released only at or above this ATS score
+    RESUME_ATS_THRESHOLD: int = 82          # target score: drafts below it are flagged in the app (still downloadable)
     GITHUB_TOKEN: str | None = None        # optional: private repos + higher GitHub rate limit
 
     # ── PDF Chunking ────────────────────────────────────────────────────────────

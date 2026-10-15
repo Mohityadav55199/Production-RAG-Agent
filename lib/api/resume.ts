@@ -72,11 +72,93 @@ export interface TailorResult {
   released: boolean;
   attempts: number;
   pdf_available: boolean;
+  tex_available: boolean;
   pdf_compiled: boolean;
   tex: string | null;
   report: AtsReport;
   warnings: string[];
   jd: JdInfo;
+}
+
+export type TemplateName = "classic" | "compact" | "skills_first";
+
+export interface RenderOptions {
+  template: TemplateName;
+  font_pt: 10 | 11 | 12;
+  margin_in: 0.5 | 0.6 | 0.75 | 1;
+}
+
+export const DEFAULT_RENDER_OPTIONS: RenderOptions = { template: "classic", font_pt: 10, margin_in: 0.6 };
+
+export interface ResumeProfile {
+  name: string;
+  email: string;
+  phone: string;
+  location: string;
+  links: string[];
+  summary: string;
+  skills: Record<string, string[]>;
+  experience: { company: string; title: string; location: string; dates: string; bullets: string[] }[];
+  projects: { name: string; tech: string; link: string; bullets: string[] }[];
+  education: { school: string; degree: string; dates: string; location: string; details: string }[];
+  certifications: string[];
+  achievements: string[];
+}
+
+/** Where a bullet came from, compared with the user's own library wording. */
+export interface BulletInfo {
+  text: string;
+  status: "original" | "reworded" | "new";
+  source: string | null;
+}
+
+export interface AnnotatedRole {
+  company: string;
+  title: string;
+  in_library: boolean;
+  bullets: BulletInfo[];
+  unused: string[];
+}
+
+export interface AnnotatedProject {
+  name: string;
+  in_library: boolean;
+  bullets: BulletInfo[];
+  unused: string[];
+}
+
+export interface Annotated {
+  experience: AnnotatedRole[];
+  projects: AnnotatedProject[];
+  left_out_projects: { name: string; tech: string; bullets: string[] }[];
+  new_skills: string[];
+}
+
+export interface GapReport {
+  score: number;
+  usable: { term: string; from: { kind: "experience" | "project"; item: string; bullet: string } | null }[];
+  usable_score: number;
+  lacking_must: string[];
+  lacking_nice: string[];
+  with_lacking_score: number;
+}
+
+export interface GenerationDetail extends GenerationSummary {
+  report: AtsReport;
+  details: { jd: JdInfo | null; warnings: string[]; compile_error: string };
+  tex: string | null;
+  below_threshold: boolean;
+  editable: boolean;
+  draft: ResumeProfile | null;
+  ai_draft: ResumeProfile | null;
+  options: RenderOptions;
+  annotated: Annotated | null;
+  gap: GapReport | null;
+}
+
+export interface BulletOption {
+  text: string;
+  source: string | null;
 }
 
 export interface GenerationSummary {
@@ -88,6 +170,7 @@ export interface GenerationSummary {
   threshold: number;
   released: boolean;
   pdf_available: boolean;
+  tex_available: boolean;
   attempts: number;
   created_at: string | null;
 }
@@ -132,7 +215,7 @@ export function atsCheck(file: File, jdText?: string): Promise<AtsCheckResult> {
 export type TailorEvent = TailorStep | TailorResult | { type: "error"; message: string } | { type: "heartbeat" } | { type: "thinking" };
 
 export async function streamTailor(
-  body: { jd_text: string; output_name: string; resume_ids?: string[] },
+  body: { jd_text: string; output_name: string; resume_ids?: string[]; options?: RenderOptions },
   onEvent: (event: TailorEvent) => void,
   signal?: AbortSignal
 ): Promise<void> {
@@ -198,11 +281,35 @@ export function deleteGeneration(id: string): Promise<void> {
   return apiFetch<void>(`/resume/generations/${id}`, { method: "DELETE" });
 }
 
-export function getGenerationTex(id: string): Promise<{ tex: string | null; report: AtsReport }> {
-  return apiFetch(`/resume/generations/${id}`);
+export function getGeneration(id: string): Promise<GenerationDetail> {
+  return apiFetch<GenerationDetail>(`/resume/generations/${id}`);
 }
 
-/** Download a released file. Goes through fetch so errors (e.g. gate not passed) can be shown. */
+/** Re-render and re-score an edited draft; the server saves it and returns the refreshed detail. */
+export function rescoreGeneration(id: string, draft: ResumeProfile, options: RenderOptions): Promise<GenerationDetail> {
+  return apiFetch<GenerationDetail>(`/resume/generations/${id}/rescore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ draft, options }),
+    timeout: 120000,
+  });
+}
+
+/** Up to three alternatives for one bullet, each guaranteed to stay within the user's library. */
+export async function regenerateBullet(
+  id: string,
+  body: { kind: "experience" | "project"; name: string; current?: string; already_used?: string[]; instruction?: string }
+): Promise<BulletOption[]> {
+  const data = await apiFetch<{ options: BulletOption[] }>(`/resume/generations/${id}/regenerate-bullet`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    timeout: 90000,
+  });
+  return data.options;
+}
+
+/** Download a compiled file. Goes through fetch so errors can be shown. */
 export async function downloadGenerationFile(id: string, kind: "pdf" | "tex", filename: string): Promise<void> {
   const res = await authedFetch(`${getApiBase()}/resume/generations/${id}/${kind}`);
   if (!res.ok) {

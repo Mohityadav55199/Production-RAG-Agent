@@ -9,20 +9,23 @@ import {
   Download,
   FileCode2,
   Loader2,
-  Lock,
+  Pencil,
   Sparkles,
   Square,
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  DEFAULT_RENDER_OPTIONS,
   downloadGenerationFile,
   extractText,
   streamTailor,
+  type RenderOptions,
   type ResumeSummary,
   type TailorResult,
   type TailorStep,
 } from "@/lib/api/resume";
+import { LayoutOptions } from "@/components/resume/layout-options";
 import { ScoreReport, ScoreRing } from "@/components/resume/score-report";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +43,7 @@ interface TailorPanelProps {
   resumes: ResumeSummary[];
   onGoToLibrary: () => void;
   onFinished: () => void;
+  onOpenEditor: (generationId: string) => void;
 }
 
 interface StepRow {
@@ -49,7 +53,7 @@ interface StepRow {
   score?: number;
 }
 
-export function TailorPanel({ resumes, onGoToLibrary, onFinished }: TailorPanelProps) {
+export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }: TailorPanelProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [jd, setJd] = useState("");
@@ -60,6 +64,7 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished }: TailorPanelP
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [reading, setReading] = useState(false);
+  const [layout, setLayout] = useState<RenderOptions>(DEFAULT_RENDER_OPTIONS);
 
   const noLibrary = resumes.length === 0;
   const canRun = !running && !noLibrary && jd.trim().length >= 80;
@@ -97,7 +102,7 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished }: TailorPanelP
     abortRef.current = new AbortController();
     try {
       await streamTailor(
-        { jd_text: jd.trim(), output_name: outputName.trim() || "resume" },
+        { jd_text: jd.trim(), output_name: outputName.trim() || "resume", options: layout },
         (event) => {
           if (event.type === "step") applyStep(event);
           else if (event.type === "result") setResult(event);
@@ -140,7 +145,7 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished }: TailorPanelP
           <CardTitle>Tailor a resume to a job</CardTitle>
           <CardDescription>
             Paste or upload the job description. The agents pick the best facts from your library, write the
-            resume, and score it. The PDF and LaTeX are released only when the ATS score reaches 82.
+            resume, and score it. Aim for an ATS score of 82 or more; you can edit the result and download it either way.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -181,6 +186,11 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished }: TailorPanelP
             <p className="text-xs text-muted-foreground">
               {jd.trim().length < 80 ? "Paste at least a few lines of the job description." : `${jd.trim().length.toLocaleString()} characters`}
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Layout</p>
+            <LayoutOptions value={layout} onChange={setLayout} disabled={running} />
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -257,16 +267,36 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished }: TailorPanelP
                       Ready: ATS score {result.score}
                     </CardTitle>
                     <CardDescription className="mt-1">
-                      Your tailored resume passed the {result.threshold} threshold after {result.attempts} attempt
-                      {result.attempts === 1 ? "" : "s"}.
+                      Your tailored resume passed the {result.threshold} target after {result.attempts} attempt
+                      {result.attempts === 1 ? "" : "s"}. You can still edit it and re-score.
                     </CardDescription>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {result.pdf_available && (
-                        <Button size="sm" onClick={() => download("pdf")}>
-                          <Download className="size-4" />
-                          {result.output_name}.pdf
-                        </Button>
-                      )}
+                  </>
+                ) : (
+                  <>
+                    <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                      <AlertTriangle className="size-5" />
+                      Score {result.score} is below the {result.threshold} target
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      After {result.attempts} attempts this is the best draft the writer could produce using only
+                      facts from your library. You can download it as it is, or open the editor to improve it and see
+                      exactly which skills are missing.
+                    </CardDescription>
+                  </>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => onOpenEditor(result.generation_id)}>
+                    <Pencil className="size-4" />
+                    Edit and improve
+                  </Button>
+                  {result.pdf_available && (
+                    <Button size="sm" variant="outline" onClick={() => download("pdf")}>
+                      <Download className="size-4" />
+                      {result.output_name}.pdf
+                    </Button>
+                  )}
+                  {result.tex_available && (
+                    <>
                       <Button size="sm" variant="outline" onClick={() => download("tex")}>
                         <FileCode2 className="size-4" />
                         {result.output_name}.tex
@@ -275,25 +305,13 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished }: TailorPanelP
                         {copied ? <Check className="size-4 text-emerald-500" /> : <Copy className="size-4" />}
                         Copy LaTeX
                       </Button>
-                    </div>
-                    {!result.pdf_available && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        The server could not compile a PDF. Paste the LaTeX into Overleaf to compile it.
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                      <Lock className="size-5" />
-                      Not released: ATS score {result.score} is below {result.threshold}
-                    </CardTitle>
-                    <CardDescription className="mt-1">
-                      After {result.attempts} attempts the best draft did not reach the threshold, so the PDF and
-                      LaTeX are withheld. The agents never invent skills, so the gaps below are skills your library
-                      doesn&apos;t show. If you genuinely have them, add a resume that mentions them and try again.
-                    </CardDescription>
-                  </>
+                    </>
+                  )}
+                </div>
+                {!result.pdf_available && result.tex_available && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    The server could not compile a PDF. Paste the LaTeX into Overleaf to compile it.
+                  </p>
                 )}
               </div>
             </div>
@@ -304,7 +322,7 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished }: TailorPanelP
             {result.warnings.length > 0 && (
               <details className="rounded-lg border bg-muted/30 text-sm">
                 <summary className="cursor-pointer px-3 py-2 font-medium">
-                  Honesty checks ({result.warnings.length}): things the writer tried that your library doesn&apos;t support
+                  Honesty checks ({[...new Set(result.warnings)].length}): things the writer tried that your library doesn&apos;t support
                 </summary>
                 <ul className="list-disc space-y-1 px-8 pb-3 text-muted-foreground">
                   {[...new Set(result.warnings)].map((w, i) => (
@@ -314,7 +332,7 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished }: TailorPanelP
               </details>
             )}
 
-            {result.released && result.tex && (
+            {result.tex && (
               <details className="rounded-lg border">
                 <summary className="cursor-pointer px-3 py-2 text-sm font-medium">View LaTeX code</summary>
                 <pre className="max-h-96 overflow-auto border-t bg-muted/30 p-3 text-xs leading-relaxed">{result.tex}</pre>

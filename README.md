@@ -119,6 +119,19 @@ Limits (all configurable, see `backend/.env.example`): 3 images per question, 4 
 25 megapixels, 40 stored figures and 6 AI captions per document, and 40 image requests per user per hour. Stored images
 live in PostgreSQL (up to 1600 px plus a 320 px thumbnail each) and are deleted with their document.
 
+### 📝 Resume Tailoring
+Build a resume library, paste a job description, and a LangGraph pipeline writes a tailored resume using **only facts from
+your own resumes** (code strips any skill, employer, project or number the library does not support), then scores it for ATS
+compatibility from the compiled PDF.
+- **Editable draft:** rewrite, reorder or remove any bullet, role or project; ask for three alternatives for one bullet
+  (each checked against your library); re-score as you go, or reset to the AI draft.
+- **Where each bullet came from:** every bullet is marked *your wording*, *reworded* (with your original one click away)
+  or *no library source*; library bullets left out of the draft can be added back.
+- **Templates:** Classic, Compact and Skills-first, all single-column plain text, with font size and margin options.
+- **Honest gap report:** missing skills are split into *your library already covers these* (one-click add, with the
+  estimated score gain) and *not in your library* (only gaining the skill closes them). Nothing is invented to raise the score.
+- **Download any draft** that compiled. Below the target score (82) the app flags it; the PDF itself carries no marker.
+
 ### 📊 Real-Time Health & Storage Dashboard
 - Live dependency status checks for FastAPI, Google Gemini, PostgreSQL, and Qdrant.
 - Real-time document count, chunk count, and storage utilization metrics.
@@ -240,7 +253,7 @@ npm run dev
      **Settings → Network check**: "Detected client IP" should equal your real public IP (search "what is my IP"), and
      the card lists what to change if it doesn't. `TRUSTED_PROXY_HOPS` (default `1`) is only used when
      `CLIENT_IP_HEADER` is not set.
-   - Optional: `ALLOW_SIGNUP` (`false` closes registration), `GITHUB_TOKEN` (private repos), `RESUME_DAILY_LIMIT`.
+   - Optional: `ALLOW_SIGNUP` (`false` closes registration), `GITHUB_TOKEN` (private repos), `RESUME_DAILY_LIMIT`, `RESUME_EDITS_PER_HOUR`, `RESUME_ATS_THRESHOLD`.
 5. Click **Create Web Service**. Your backend will be live at `https://production-rag-agent.onrender.com`.
 6. Log in with the admin account. Once you've signed in, you can remove `ADMIN_PASSWORD` from the environment: the
    admin flag stays on the account (setting it again later resets the password to that value).

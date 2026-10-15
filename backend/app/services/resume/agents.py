@@ -13,8 +13,8 @@ Agents:
     ATS scorer     compiled-PDF based score (see ats.py)
     Reviser        turns score findings into feedback for the next attempt
 
-The score gate is enforced by the caller: LaTeX/PDF are only released when the
-final score reaches the threshold.
+The score threshold is a target, not a lock: the caller records whether the final
+score reached it, and the app flags drafts that fall short (they stay downloadable).
 """
 
 import asyncio
@@ -383,7 +383,7 @@ async def score_profile(
     warnings: list[str] = []
     if compile_failed:
         first_line = next((ln for ln in compile_error.splitlines() if ln.startswith("!")), compile_error[:120])
-        warnings.append(f"The LaTeX could not be compiled, so this result is not released ({first_line.strip()}).")
+        warnings.append(f"The LaTeX could not be compiled, so there is nothing to download ({first_line.strip()}).")
     dropped = unsupported_characters(profile)
     if dropped:
         warnings.append(
