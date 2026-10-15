@@ -1,66 +1,36 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Database,
-  Server,
-  Sparkles,
-  XCircle,
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Cpu, Database, Loader2, RefreshCw, Server, Sparkles, XCircle } from "lucide-react";
 import { BACKEND_OVERRIDE_ALLOWED, getApiBase } from "@/lib/api/client";
 import { useHealth } from "@/lib/hooks/use-health";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-function StatusBadge({ status }: { status: string }) {
-  const normalized = status.toLowerCase();
-  const isHealthy =
-    normalized.includes("connected") ||
-    normalized.includes("healthy") ||
-    normalized.includes("ok") ||
-    normalized === "true";
+const HEALTHY = ["connected", "healthy", "ok", "online", "true"];
 
+/** Status text with a green tick or a red cross; only these exact words count as healthy ("not_connected" doesn't). */
+function StatusBadge({ status }: { status: string }) {
+  const isHealthy = HEALTHY.includes(status.trim().toLowerCase());
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium",
-        isHealthy
-          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-          : "bg-destructive/10 text-destructive"
+        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium",
+        isHealthy ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-destructive/10 text-destructive"
       )}
     >
-      {isHealthy ? (
-        <CheckCircle2 className="size-3" />
-      ) : (
-        <XCircle className="size-3" />
-      )}
-      {status}
+      {isHealthy ? <CheckCircle2 className="size-3" /> : <XCircle className="size-3" />}
+      {status.replace(/_/g, " ")}
     </span>
   );
 }
 
-const services = [
-  { key: "gemini", label: "Gemini API", icon: Sparkles },
-  { key: "backend", label: "Backend", icon: Server },
-  { key: "qdrant", label: "Qdrant", icon: Database },
-  { key: "postgres", label: "Postgres", icon: Database },
-] as const;
-
 export function SettingsPanel() {
-  const { health, loading, error, refetch } = useHealth();
+  const { health, loading, refreshing, error, refetch } = useHealth();
   const [urlInput, setUrlInput] = useState("");
 
   useEffect(() => {
@@ -71,106 +41,85 @@ export function SettingsPanel() {
     if (!urlInput.trim()) return;
     localStorage.setItem("rag_backend_url", urlInput.trim());
     toast.success("API URL updated successfully");
-    refetch();
+    void refetch();
   };
 
+  const services = [
+    { label: "Backend", icon: Server, status: health?.backend },
+    ...(health?.groq ? [{ label: "Groq", icon: Cpu, status: health.groq }] : []),
+    { label: "Google AI", icon: Sparkles, status: health?.gemini },
+    { label: "Postgres", icon: Database, status: health?.postgres },
+    { label: "Qdrant", icon: Database, status: health?.qdrant },
+  ];
+
+  const details = [
+    { label: "Environment", value: health?.environment ?? "unknown" },
+    { label: "Overall status", value: <StatusBadge status={health?.status ?? "unknown"} /> },
+    ...(health?.version ? [{ label: "Version", value: health.version }] : []),
+  ];
+
   return (
-    <div className="space-y-6">
-      {error && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="size-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-          <button
-            className="text-xs underline"
-            onClick={() => refetch()}
-          >
-            Retry
-          </button>
+    <Card className="gap-3 py-4">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 px-4 sm:px-5">
+        <div>
+          <CardTitle className="text-base">Services</CardTitle>
+          <CardDescription>What the server is connected to right now</CardDescription>
         </div>
-      )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={() => void refetch()}
+          disabled={refreshing}
+          aria-label="Check services again"
+        >
+          {refreshing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-3 px-4 text-sm sm:px-5">
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+            <AlertCircle className="size-3.5 shrink-0" />
+            <span className="min-w-0 flex-1">Can&apos;t reach the server: {error}</span>
+          </div>
+        )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {services.map((service, index) => {
-          const Icon = service.icon;
-          const status =
-            health?.[service.key as keyof typeof health]?.toString() ??
-            "unknown";
+        <div className="flex flex-wrap gap-2">
+          {services.map((s) => (
+            <div key={s.label} className="flex min-w-[11rem] flex-1 items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2">
+              <span className="flex min-w-0 items-center gap-2">
+                <s.icon className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate font-medium">{s.label}</span>
+              </span>
+              {loading ? <Skeleton className="h-4 w-14" /> : <StatusBadge status={s.status ?? "unknown"} />}
+            </div>
+          ))}
+        </div>
 
-          return (
-            <motion.div
-              key={service.key}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-            >
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Icon className="size-4" />
-                    </div>
-                    <CardTitle className="text-sm font-medium">
-                      {service.label}
-                    </CardTitle>
-                  </div>
-                  {loading ? (
-                    <Skeleton className="h-5 w-20" />
-                  ) : (
-                    <StatusBadge status={status} />
-                  )}
-                </CardHeader>
-              </Card>
-            </motion.div>
-          );
-        })}
-      </div>
+        <dl className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-xs">
+          {details.map((d) => (
+            <div key={d.label} className="flex items-center gap-2">
+              <dt className="text-muted-foreground">{d.label}</dt>
+              <dd className="font-medium">{loading ? <Skeleton className="h-4 w-16" /> : d.value}</dd>
+            </div>
+          ))}
+        </dl>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Environment Settings</CardTitle>
-          <CardDescription>Runtime configuration and system info</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          {loading ? (
-            <Skeleton className="h-24 w-full" />
-          ) : (
-            <>
-              {BACKEND_OVERRIDE_ALLOWED && (
-                <div className="flex flex-col gap-2 border-b border-border/60 pb-3">
-                  <span className="text-muted-foreground font-medium">API Base URL</span>
-                  <div className="flex gap-2 max-w-md">
-                    <Input
-                      value={urlInput}
-                      onChange={(e) => setUrlInput(e.target.value)}
-                      placeholder="http://localhost:8000"
-                      className="font-mono text-xs"
-                    />
-                    <Button size="sm" onClick={handleSaveUrl}>
-                      Save
-                    </Button>
-                  </div>
-                </div>
-              )}
-              <div className="flex justify-between border-b border-border/60 py-2">
-                <span className="text-muted-foreground">Environment</span>
-                <span>{health?.environment ?? "unknown"}</span>
-              </div>
-              <div className="flex justify-between border-b border-border/60 py-2">
-                <span className="text-muted-foreground">Backend Status</span>
-                <StatusBadge status={health?.status ?? "unknown"} />
-              </div>
-              {health?.version && (
-                <div className="flex justify-between py-2">
-                  <span className="text-muted-foreground">Version</span>
-                  <span>{health.version}</span>
-                </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+        {BACKEND_OVERRIDE_ALLOWED && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3 text-xs">
+            <span className="font-medium text-muted-foreground">API base URL</span>
+            <Input
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="http://localhost:8000"
+              className="h-8 max-w-xs font-mono text-xs"
+            />
+            <Button size="sm" className="h-8" onClick={handleSaveUrl}>
+              Save
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 
 export function HealthStatus({ compact = false }: { compact?: boolean }) {
-  const { health, loading, refetch } = useHealth();
+  const { health, loading, refreshing, refetch } = useHealth();
 
   const services = [
     { name: "Backend API", key: "backend", value: health?.backend },
@@ -68,8 +68,8 @@ export function HealthStatus({ compact = false }: { compact?: boolean }) {
               <span className="text-foreground">{service.name}</span>
             </span>
           ))}
-          <Button variant="ghost" size="icon" onClick={refetch} disabled={loading} className="size-7" aria-label="Refresh health">
-            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+          <Button variant="ghost" size="icon" onClick={() => void refetch()} disabled={refreshing} className="size-7" aria-label="Refresh health">
+            <RefreshCw className={`size-3.5 ${loading || refreshing ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </div>
@@ -96,11 +96,11 @@ export function HealthStatus({ compact = false }: { compact?: boolean }) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={refetch}
-            disabled={loading}
+            onClick={() => void refetch()}
+            disabled={refreshing}
             className="size-8"
           >
-            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`size-4 ${loading || refreshing ? "animate-spin" : ""}`} />
           </Button>
         </CardHeader>
         <CardContent className="mt-2 grid gap-3 sm:grid-cols-2 md:grid-cols-4">

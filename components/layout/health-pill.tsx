@@ -9,8 +9,10 @@ const isOnline = (v: string | undefined) => ONLINE.includes(String(v ?? "").toLo
 
 /** "System health" with every service's status inside one box, always visible (no dropdown). */
 export function HealthPill({ className }: { className?: string }) {
-  const { health, loading, refetch } = useHealth();
+  const { health, loading, refreshing, error, refetch } = useHealth();
   const checking = loading && !health;
+  // The health check itself failed: the backend can't be reached, so nothing can be shown as online
+  const unreachable = Boolean(error);
 
   const services = [
     { name: "Backend", value: health?.backend },
@@ -19,22 +21,25 @@ export function HealthPill({ className }: { className?: string }) {
     { name: "Postgres", value: health?.postgres },
     { name: "Qdrant", value: health?.qdrant },
   ];
-  const issues = services.filter((s) => !isOnline(s.value)).length;
+  const isUp = (v: string | undefined) => !unreachable && isOnline(v);
+  const issues = services.filter((s) => !isUp(s.value)).length;
 
   return (
     <div
       className={cn(
-        "inline-flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-xl border bg-card px-3 py-1.5 text-[11px] shadow-sm",
+        "inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border bg-card px-3 py-1.5 text-[11px] shadow-sm",
         !checking && issues > 0 && "border-amber-500/40",
         className
       )}
       role="status"
-      aria-label={checking ? "System health: checking" : issues ? `System health: ${issues} issue(s)` : "System health: all online"}
+      aria-label={
+        checking ? "System health: checking" : unreachable ? "System health: server unreachable" : issues ? `System health: ${issues} issue(s)` : "System health: all online"
+      }
     >
       <span className="font-semibold text-foreground">System health</span>
       <span className="h-3 w-px bg-border" aria-hidden />
       {services.map((s) => {
-        const up = isOnline(s.value);
+        const up = isUp(s.value);
         return (
           <span
             key={s.name}
@@ -56,13 +61,13 @@ export function HealthPill({ className }: { className?: string }) {
       })}
       <button
         type="button"
-        onClick={refetch}
-        disabled={loading}
-        className="-mr-1 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+        onClick={() => void refetch()}
+        disabled={refreshing}
+        className="-mr-1 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-wait"
         aria-label="Check services again"
-        title="Check again"
+        title={unreachable ? "Server unreachable. Check again" : "Check again"}
       >
-        <RefreshCw className={cn("size-3", loading && "animate-spin")} />
+        <RefreshCw className={cn("size-3", (refreshing || checking) && "animate-spin")} />
       </button>
     </div>
   );

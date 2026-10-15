@@ -77,11 +77,11 @@ export function UsageMetrics() {
     : [];
 
   return (
-    <Card className="mt-6">
-      <CardHeader>
+    <Card className="mt-4 gap-3 py-4">
+      <CardHeader className="px-4 sm:px-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
               <Activity className="size-4" />
               Usage and speed
               <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">Admin</span>
@@ -122,16 +122,16 @@ export function UsageMetrics() {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 px-4 sm:px-5">
         {error && <p className="text-sm text-destructive">{error}</p>}
         {data && data.questions === 0 && <p className="text-sm text-muted-foreground">No questions in this period yet.</p>}
         {data && data.questions > 0 && (
           <>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
               {tiles.map((t) => (
-                <div key={t.label} className="rounded-lg border bg-muted/20 px-3 py-2.5">
-                  <p className="text-xs text-muted-foreground">{t.label}</p>
-                  <p className={cn("text-lg font-semibold tabular-nums", t.warn && "text-amber-600 dark:text-amber-400")}>{t.value}</p>
+                <div key={t.label} className="rounded-lg border bg-muted/20 px-3 py-2">
+                  <p className="truncate text-[11px] text-muted-foreground" title={t.label}>{t.label}</p>
+                  <p className={cn("text-base font-semibold tabular-nums", t.warn && "text-amber-600 dark:text-amber-400")}>{t.value}</p>
                   {t.hint && <p className="text-[11px] text-muted-foreground">{t.hint}</p>}
                 </div>
               ))}

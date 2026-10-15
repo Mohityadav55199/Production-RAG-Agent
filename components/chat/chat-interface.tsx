@@ -303,8 +303,9 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
   const canSend = (input.trim().length > 0 || attachments.length > 0) && !preparing;
 
   return (
-    // Fills the screen below the app and page headers, so the input is visible without scrolling
-    <div className="flex h-[calc(100dvh-10.75rem)] min-h-[24rem] flex-col sm:h-[calc(100dvh-9.5rem)]">
+    // Fills the screen below the app and page headers, so the input is visible without scrolling. On large
+    // screens the page header sits beside the chat, so it runs from below the app header to the bottom.
+    <div className="flex h-[calc(100dvh-10.75rem)] min-h-[24rem] flex-col sm:h-[calc(100dvh-9.5rem)] lg:h-[calc(100dvh-6.5rem)]">
       <div
         className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card"
         onDragOver={(e) => {

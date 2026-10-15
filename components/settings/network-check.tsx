@@ -47,9 +47,9 @@ export function NetworkCheck() {
   };
 
   return (
-    <Card className="mt-6">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <Card className="mt-4 gap-3 py-4">
+      <CardHeader className="px-4 sm:px-5">
+        <CardTitle className="flex items-center gap-2 text-base">
           <Network className="size-4" />
           Network check
           <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">Admin</span>
@@ -60,7 +60,7 @@ export function NetworkCheck() {
           share one limit.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 px-4 sm:px-5">
         <Button onClick={run} disabled={loading} variant="outline" size="sm">
           {loading ? <Loader2 className="size-4 animate-spin" /> : <Network className="size-4" />}
           Check my connection
