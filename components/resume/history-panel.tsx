@@ -19,8 +19,10 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export function HistoryPanel({ refreshKey, onOpen }: { refreshKey: number; onOpen: (generationId: string) => void }) {
+  const { confirm, dialog } = useConfirm();
   const [items, setItems] = useState<GenerationSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,8 +37,15 @@ export function HistoryPanel({ refreshKey, onOpen }: { refreshKey: number; onOpe
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load, refreshKey]);
+    let cancelled = false;
+    listGenerations()
+      .then((data) => !cancelled && setItems(data))
+      .catch((err) => !cancelled && toast.error(err instanceof Error ? err.message : "Could not load history"))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   const download = async (g: GenerationSummary, kind: "pdf" | "tex") => {
     try {
@@ -47,7 +56,11 @@ export function HistoryPanel({ refreshKey, onOpen }: { refreshKey: number; onOpe
   };
 
   const remove = async (g: GenerationSummary) => {
-    if (!window.confirm(`Delete "${g.output_name}"?`)) return;
+    const ok = await confirm({
+      title: `Delete "${g.output_name}"?`,
+      description: "The tailored draft, its downloads and any saved cover letter are removed. Your library is not touched.",
+    });
+    if (!ok) return;
     try {
       await deleteGeneration(g.id);
       load();
@@ -122,6 +135,7 @@ export function HistoryPanel({ refreshKey, onOpen }: { refreshKey: number; onOpe
           </div>
         ))}
       </CardContent>
+      {dialog}
     </Card>
   );
 }

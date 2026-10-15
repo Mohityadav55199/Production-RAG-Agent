@@ -92,3 +92,11 @@ class TestScoring:
     def test_fallback_jd_analysis_finds_terms(self):
         jd = ats.fallback_jd_analysis("We need Python, FastAPI and Docker experience. Knowledge of Go is a plus.")
         assert {"Python".lower(), "fastapi", "docker"} <= {t.lower() for t in jd.must_have + jd.nice_to_have}
+
+
+def test_a_tool_shows_the_practice_but_not_the_reverse():
+    from app.services.resume.ats import term_in_text
+
+    assert term_in_text("ci/cd", "Automated releases with GitHub Actions.")
+    assert term_in_text("ci/cd", "Set up continuous integration for the app.")
+    assert not term_in_text("github actions", "Built CI/CD pipelines with Fastlane.")

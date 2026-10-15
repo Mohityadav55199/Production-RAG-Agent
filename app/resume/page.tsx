@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { ResumeWorkspace } from "@/components/resume/resume-workspace";
 
@@ -10,7 +11,10 @@ export default function ResumePage() {
           Tailor your resume to any job description, then check its ATS score
         </p>
       </div>
-      <ResumeWorkspace />
+      {/* The workspace reads ?run= from the URL, which needs a Suspense boundary on a static page */}
+      <Suspense>
+        <ResumeWorkspace />
+      </Suspense>
     </AppShell>
   );
 }

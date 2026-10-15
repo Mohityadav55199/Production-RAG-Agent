@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowDown,
@@ -29,6 +29,7 @@ import {
   type ResumeProfile,
 } from "@/lib/api/resume";
 import { LayoutOptions } from "@/components/resume/layout-options";
+import { OutreachPanel } from "@/components/resume/outreach-panel";
 import { ScoreReport, ScoreRing } from "@/components/resume/score-report";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,35 @@ import { cn } from "@/lib/utils";
 
 const MAX_BULLETS = 10;
 const MAX_BULLET_CHARS = 600;
+
+// Unsaved edits survive a reload: kept per run in this browser, alongside the server version they started from
+const unsavedKey = (generationId: string) => `resume-unsaved:${generationId}`;
+
+interface UnsavedEdits {
+  base: string; // JSON of the server draft + options the edits were made on
+  draft: ResumeProfile;
+  options: RenderOptions;
+}
+
+function readUnsaved(generationId: string): UnsavedEdits | null {
+  try {
+    const raw = localStorage.getItem(unsavedKey(generationId));
+    return raw ? (JSON.parse(raw) as UnsavedEdits) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeUnsaved(generationId: string, edits: UnsavedEdits | null) {
+  try {
+    if (edits) localStorage.setItem(unsavedKey(generationId), JSON.stringify(edits));
+    else localStorage.removeItem(unsavedKey(generationId));
+  } catch {
+    // storage blocked or full: edits still live in memory
+  }
+}
+
+const serverVersion = (d: GenerationDetail) => JSON.stringify([d.draft, d.options]);
 
 type Kind = "experience" | "project";
 
@@ -113,7 +143,10 @@ function BulletRow({ text, info, canUp, canDown, onChange, onRemove, onMove, sug
           value={text}
           maxLength={MAX_BULLET_CHARS}
           onChange={(e) => onChange(e.target.value)}
-          className="min-h-[56px] flex-1 resize-y text-sm"
+          // Grows with its text so a whole bullet is readable on a phone (rows is the fallback where
+          // field-sizing isn't supported)
+          rows={Math.min(8, Math.max(2, Math.ceil(text.length / 70)))}
+          className="min-h-[56px] flex-1 resize-y text-sm [field-sizing:content]"
           aria-label="Bullet text"
         />
         <div className="flex shrink-0 flex-col">
@@ -146,6 +179,25 @@ function BulletRow({ text, info, canUp, canDown, onChange, onRemove, onMove, sug
           <Sparkles className="size-3" />
           Rewrite
         </button>
+        {info?.skills && info.skills.length > 0 && (
+          <span className="flex flex-wrap items-center gap-1" aria-label="Job skills this bullet covers">
+            <span className="text-muted-foreground">Covers</span>
+            {info.skills.map((s) => (
+              <span
+                key={s.term}
+                title={s.required ? "Required by the job" : "Preferred by the job"}
+                className={cn(
+                  "rounded-full border px-1.5 py-px font-medium",
+                  s.required
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                    : "border-border bg-muted/50 text-muted-foreground"
+                )}
+              >
+                {s.term}
+              </span>
+            ))}
+          </span>
+        )}
       </div>
 
       {showSource && info?.source && (
@@ -295,25 +347,38 @@ function ItemBullets({ generationId, kind, name, bullets, infoFor, unused, onCha
 interface DraftEditorProps {
   generationId: string;
   onChanged?: () => void;
+  /** Scroll to the cover letter / recruiter message section once loaded. */
+  focusOutreach?: boolean;
 }
 
-export function DraftEditor({ generationId, onChanged }: DraftEditorProps) {
+export function DraftEditor({ generationId, onChanged, focusOutreach }: DraftEditorProps) {
   const [detail, setDetail] = useState<GenerationDetail | null>(null);
   const [draft, setDraft] = useState<ResumeProfile | null>(null);
   const [options, setOptions] = useState<RenderOptions | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scoring, setScoring] = useState(false);
+  const [version, setVersion] = useState(0); // bumps on every server update, so the outreach panel reloads
+  const outreachRef = useRef<HTMLDivElement>(null);
 
-  const apply = useCallback((d: GenerationDetail) => {
+  const apply = useCallback((d: GenerationDetail, restore = false) => {
     setDetail(d);
-    setDraft(d.draft);
-    setOptions(d.options);
-  }, []);
+    setVersion((v) => v + 1);
+    const unsaved = restore ? readUnsaved(generationId) : null;
+    if (unsaved && unsaved.base === serverVersion(d) && d.editable) {
+      setDraft(unsaved.draft);
+      setOptions(unsaved.options);
+      toast.info("Restored your unsaved edits. Re-score to apply them.");
+    } else {
+      writeUnsaved(generationId, null);
+      setDraft(d.draft);
+      setOptions(d.options);
+    }
+  }, [generationId]);
 
   useEffect(() => {
     let cancelled = false;
     getGeneration(generationId)
-      .then((d) => !cancelled && apply(d))
+      .then((d) => !cancelled && apply(d, true))
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "Could not load this resume"));
     return () => {
       cancelled = true;
@@ -324,6 +389,23 @@ export function DraftEditor({ generationId, onChanged }: DraftEditorProps) {
     () => !!detail && (JSON.stringify(draft) !== JSON.stringify(detail.draft) || JSON.stringify(options) !== JSON.stringify(detail.options)),
     [detail, draft, options]
   );
+
+  // Keep unsaved edits across reloads, and warn before the page is closed with edits pending
+  useEffect(() => {
+    if (!detail || !draft || !options) return;
+    writeUnsaved(generationId, dirty ? { base: serverVersion(detail), draft, options } : null);
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [generationId, detail, draft, options, dirty]);
+
+  useEffect(() => {
+    if (focusOutreach && detail) outreachRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [focusOutreach, detail]);
 
   if (error) {
     return (
@@ -477,13 +559,16 @@ export function DraftEditor({ generationId, onChanged }: DraftEditorProps) {
                   <span className="font-normal text-muted-foreground">: adding them could lift the score to about {gap.usable_score}</span>
                 </p>
                 {gap.usable.map((u) => (
-                  <div key={u.term} className="flex items-start gap-2 rounded-md bg-muted/40 p-2">
-                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium">{u.term}</span>
-                    <span className="flex-1 text-muted-foreground">{u.from ? `${u.from.item}: ${u.from.bullet}` : "Mentioned in your library"}</span>
+                  <div key={u.term} className="flex flex-wrap items-start gap-2 rounded-md bg-muted/40 p-2 sm:flex-nowrap">
+                    <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium">{u.term}</span>
+                    <span className="min-w-0 basis-full text-muted-foreground sm:basis-auto sm:flex-1">
+                      {u.from ? `${u.from.item}: ${u.from.bullet}` : "Mentioned in your library"}
+                    </span>
                     {u.from && (
                       <Button
                         size="sm"
                         variant="secondary"
+                        className="ml-auto"
                         onClick={() => {
                           if (addFromLibrary(u.from!)) toast.success("Added. Re-score to see the effect.");
                           else toast.info("That bullet is already there, or its role isn't in this draft.");
@@ -589,8 +674,8 @@ export function DraftEditor({ generationId, onChanged }: DraftEditorProps) {
               <section key={`${role.company}-${i}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate font-semibold">{role.company}</p>
-                    <p className="truncate text-sm text-muted-foreground">{[role.title, role.dates].filter(Boolean).join(" · ")}</p>
+                    <p className="break-words font-semibold">{role.company}</p>
+                    <p className="break-words text-sm text-muted-foreground">{[role.title, role.dates].filter(Boolean).join(" · ")}</p>
                   </div>
                   <div className="flex shrink-0">
                     <Button size="icon" variant="ghost" className="size-8" disabled={i === 0} aria-label="Move role up"
@@ -632,8 +717,8 @@ export function DraftEditor({ generationId, onChanged }: DraftEditorProps) {
               <section key={`${proj.name}-${i}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate font-semibold">{proj.name}</p>
-                    {proj.tech && <p className="truncate text-sm text-muted-foreground">{proj.tech}</p>}
+                    <p className="break-words font-semibold">{proj.name}</p>
+                    {proj.tech && <p className="break-words text-sm text-muted-foreground">{proj.tech}</p>}
                   </div>
                   <div className="flex shrink-0">
                     <Button size="icon" variant="ghost" className="size-8" disabled={i === 0} aria-label="Move project up"
@@ -708,6 +793,17 @@ export function DraftEditor({ generationId, onChanged }: DraftEditorProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Cover letter and recruiter message, written from this draft */}
+      <div ref={outreachRef} id="outreach" className="scroll-mt-4">
+        <OutreachPanel
+          key={version}
+          generationId={generationId}
+          company={detail.company ?? undefined}
+          jobTitle={detail.job_title ?? undefined}
+          saved={detail.outreach}
+        />
+      </div>
     </div>
   );
 }

@@ -12,9 +12,7 @@ import {
   MessageSquare,
   Plus,
   Search,
-  Sparkles,
   Trash2,
-  TrendingUp,
 } from "lucide-react";
 import {
   createJob,
@@ -25,6 +23,8 @@ import {
   type JobStatus,
 } from "@/lib/api/resume";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const STATUS_CONFIG: Record<
   JobStatus,
@@ -73,6 +73,7 @@ interface JobTrackerProps {
 }
 
 export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
+  const { confirm, dialog } = useConfirm();
   const [jobs, setJobs] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -96,14 +97,21 @@ export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
       const data = await listJobs();
       setJobs(data);
     } catch (err) {
-      console.error("Failed to load jobs", err);
+      toast.error(err instanceof Error ? err.message : "Could not load your jobs");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchJobs();
+    let cancelled = false;
+    listJobs()
+      .then((data) => !cancelled && setJobs(data))
+      .catch((err) => !cancelled && toast.error(err instanceof Error ? err.message : "Could not load your jobs"))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const openAddModal = () => {
@@ -159,19 +167,20 @@ export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
       setShowModal(false);
       await fetchJobs();
     } catch (err) {
-      console.error("Failed to save job application", err);
+      toast.error(err instanceof Error ? err.message : "Could not save the job");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this job application?")) return;
+    const ok = await confirm({ title: "Remove this job application?", confirmLabel: "Remove" });
+    if (!ok) return;
     try {
       await deleteJob(id);
       setJobs((prev) => prev.filter((j) => j.id !== id));
     } catch (err) {
-      console.error("Failed to delete job", err);
+      toast.error(err instanceof Error ? err.message : "Could not remove the job");
     }
   };
 
@@ -180,7 +189,7 @@ export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
       const updated = await updateJob(id, { status: newStatus });
       setJobs((prev) => prev.map((j) => (j.id === id ? updated : j)));
     } catch (err) {
-      console.error("Failed to update status", err);
+      toast.error(err instanceof Error ? err.message : "Could not update the status");
     }
   };
 
@@ -403,10 +412,11 @@ export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
                     >
                       Edit
                     </button>
-                    {onOpenOutreach && (
+                    {onOpenOutreach && job.resume_generation_id && (
                       <button
                         onClick={() => onOpenOutreach(job)}
                         className="flex items-center gap-1 text-primary hover:underline font-medium"
+                        title="Open the tailored resume with its cover letter and recruiter message"
                       >
                         <MessageSquare className="h-3 w-3" />
                         Outreach
@@ -560,6 +570,7 @@ export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
           </div>
         </div>
       )}
+      {dialog}
     </div>
   );
 }

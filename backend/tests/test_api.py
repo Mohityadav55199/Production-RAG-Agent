@@ -751,6 +751,63 @@ class TestResumeEditing:
                            json={"kind": "experience", "name": "Globex"})
         assert nope.status_code == 422 and "without inventing facts" in nope.json()["detail"]
 
+    def test_each_bullet_lists_the_job_skills_it_covers(self, client, users, seeded):
+        d = client.get(f"/resume/generations/{seeded['gen']}", headers=users["alice"]).json()
+        skills = d["annotated"]["experience"][0]["bullets"][0]["skills"]
+        assert {"term": "FastAPI", "required": True} in skills
+        assert all(s["term"] != "Kubernetes" for s in skills)
+
+    def test_outreach_uses_the_edited_draft_is_saved_and_goes_stale(self, client, users, seeded, monkeypatch):
+        from app.api import resume as resume_api
+
+        calls = []
+
+        async def fake_letter(profile, jd, jd_text, corpus=""):
+            calls.append([b for e in profile.experience for b in e.bullets])
+            return {"full_text": f"Letter {len(calls)}", "warnings": []}
+
+        async def fake_score(profile, options, jd, jd_text, with_fit=True):
+            return {"score": 75, "tex": "T", "pdf": b"%PDF", "warnings": [], "compile_error": "",
+                    "compile_failed": False, "report": {"total": 75, "has_jd": True, "pdf_checked": True,
+                    "matched": [], "fixes": [], "missing_must": [], "missing_nice": [], "components": []}}
+
+        monkeypatch.setattr(resume_api, "generate_cover_letter", fake_letter)
+        monkeypatch.setattr(resume_api, "score_profile", fake_score)
+        url = f"/resume/generations/{seeded['gen']}/cover-letter"
+        draft = client.get(f"/resume/generations/{seeded['gen']}", headers=users["alice"]).json()["draft"]
+
+        first = client.post(url, headers=users["alice"], json={}).json()
+        assert first["full_text"] == "Letter 1" and first["stale"] is False
+        assert calls[0] == [b for e in draft["experience"] for b in e["bullets"]]      # written from the draft
+        assert client.post(url, headers=users["alice"], json={}).json()["full_text"] == "Letter 1"
+        assert len(calls) == 1                                                          # served from storage
+
+        edited = {**draft, "summary": "Backend developer."}
+        client.post(f"/resume/generations/{seeded['gen']}/rescore", headers=users["alice"], json={"draft": edited})
+        detail = client.get(f"/resume/generations/{seeded['gen']}", headers=users["alice"]).json()
+        assert detail["outreach"]["cover_letter"]["stale"] is True
+
+        again = client.post(url, headers=users["alice"], json={"regenerate": True}).json()
+        assert again["full_text"] == "Letter 2" and again["stale"] is False
+        assert client.post(url, headers=users["bob"], json={}).status_code == 404
+
+    def test_edits_that_invent_skills_or_employers_are_flagged(self, client, users, seeded, monkeypatch):
+        from app.api import resume as resume_api
+
+        async def fake_score(profile, options, jd, jd_text, with_fit=True):
+            return {"score": 75, "tex": "T", "pdf": b"%PDF", "warnings": [], "compile_error": "",
+                    "compile_failed": False, "report": {"total": 75, "has_jd": True, "pdf_checked": True,
+                    "matched": [], "fixes": [], "missing_must": [], "missing_nice": [], "components": []}}
+
+        monkeypatch.setattr(resume_api, "score_profile", fake_score)
+        draft = {**seeded["profile"]}
+        draft["experience"] = [{**draft["experience"][0], "bullets": ["Ran Kubernetes clusters at Globex Corp."]}]
+        d = client.post(f"/resume/generations/{seeded['gen']}/rescore", headers=users["alice"],
+                        json={"draft": draft}).json()
+        joined = " ".join(d["details"]["warnings"])
+        assert "kubernetes is not in your library" in joined
+        assert "Globex Corp is not an employer in your library" in joined
+
 
 def test_root_says_the_api_is_running(client):
     res = client.get("/")

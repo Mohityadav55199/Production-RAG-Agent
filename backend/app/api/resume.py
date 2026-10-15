@@ -10,6 +10,7 @@ Editing      POST /resume/generations/{id}/rescore           – re-render and r
 Downloads    GET  /resume/generations/{id}/pdf|tex  – any compiled draft; the app shows when it is below the gate
 """
 
+import hashlib
 import json
 import re
 import uuid
@@ -426,12 +427,14 @@ async def _generation_detail(g: ResumeGeneration) -> dict:
         "options": stored.get("options") or RenderOptions().model_dump(),
         "annotated": None,
         "gap": None,
+        "outreach": _saved_outreach(stored),
     }
     if detail["editable"]:
         library_profile, corpus = await _library_for(g)
         if library_profile is not None:
             draft = Profile.model_validate(stored["draft"])
-            detail["annotated"] = annotate(draft, library_profile)
+            jd = JDAnalysis.model_validate(stored["jd"]) if stored.get("jd") else None
+            detail["annotated"] = annotate(draft, library_profile, jd)
             if stored.get("jd") and g.breakdown.get("has_jd"):
                 detail["gap"] = gap_report(
                     draft, library_profile, JDAnalysis.model_validate(stored["jd"]), g.breakdown, corpus
@@ -513,7 +516,7 @@ async def rescore(generation_id: uuid.UUID, body: RescoreRequest, user: CurrentU
     library_profile, corpus = await _library_for(g)
     warnings = scored["warnings"]
     if library_profile is not None:
-        warnings = claims_check(body.draft, library_profile, corpus) + warnings
+        warnings = claims_check(body.draft, library_profile, corpus, jd) + warnings
 
     score = int(scored["score"])
     compile_failed = scored["compile_failed"]
@@ -588,55 +591,99 @@ async def delete_generation(generation_id: uuid.UUID, user: CurrentUser = Depend
 
 class OutreachOptions(BaseModel):
     platform: Literal["linkedin", "email"] = "linkedin"
+    regenerate: bool = Field(False, description="Write a new one even if one is saved for this run.")
 
 
-@router.post("/generations/{generation_id}/cover-letter", summary="Generate grounded cover letter from a tailored run")
-async def generation_cover_letter(
-    generation_id: uuid.UUID,
-    user: CurrentUser = Depends(get_current_user),
-) -> dict:
-    g = await _get_generation(generation_id, user)
+class CoverLetterOptions(BaseModel):
+    regenerate: bool = Field(False, description="Write a new one even if one is saved for this run.")
+
+
+def _draft_key(stored: dict) -> str:
+    """Fingerprint of the draft an outreach text was written from, to tell when the draft has changed since."""
+    return hashlib.sha256(json.dumps(stored.get("draft") or {}, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def _saved_outreach(stored: dict) -> dict:
+    """Saved cover letter / recruiter messages, each marked stale when the draft was edited afterwards."""
+    saved = stored.get("outreach") or {}
+    key = _draft_key(stored)
+    mark = lambda item: {**item, "stale": item.get("draft_key") != key} if item else None  # noqa: E731
+    return {
+        "cover_letter": mark(saved.get("cover_letter")),
+        "recruiter": {p: mark(m) for p, m in (saved.get("recruiter") or {}).items()},
+    }
+
+
+async def _outreach_inputs(g: ResumeGeneration) -> tuple[Profile, str, JDAnalysis]:
+    """The profile to write from (the edited draft when there is one), the library text that grounds it, the JD."""
     stored = g.report or {}
     if not stored.get("jd") or not g.jd_text:
         raise HTTPException(status.HTTP_409_CONFLICT, "This run has no job description to tailor against.")
-
     library_profile, corpus = await _library_for(g)
     if library_profile is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "The resumes for this run are no longer in your library.")
+    # Write from what the user will actually send: the tailored, possibly edited, draft
+    profile = Profile.model_validate(stored["draft"]) if stored.get("draft") else library_profile
+    return profile, corpus, JDAnalysis.model_validate(stored["jd"])
 
+
+async def _save_outreach(generation_id: uuid.UUID, kind: str, item: dict, platform: str | None = None) -> None:
+    async with get_db_session() as session:
+        row = await session.get(ResumeGeneration, generation_id)
+        report = dict(row.report or {})
+        outreach = dict(report.get("outreach") or {})
+        if kind == "cover_letter":
+            outreach["cover_letter"] = item
+        else:
+            outreach["recruiter"] = {**(outreach.get("recruiter") or {}), platform: item}
+        report["outreach"] = outreach
+        row.report = report   # a new dict, so SQLAlchemy writes the JSON column
+
+
+@router.post("/generations/{generation_id}/cover-letter", summary="Cover letter for a run (saved; regenerate on request)")
+async def generation_cover_letter(
+    generation_id: uuid.UUID,
+    body: CoverLetterOptions = CoverLetterOptions(),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    g = await _get_generation(generation_id, user)
+    saved = _saved_outreach(g.report or {})["cover_letter"]
+    if saved and not body.regenerate:
+        return saved
+
+    profile, corpus, jd = await _outreach_inputs(g)
     _check_edit_budget(user.key)
-    jd = JDAnalysis.model_validate(stored["jd"])
     try:
-        letter = await generate_cover_letter(library_profile, jd, g.jd_text, corpus)
+        letter = await generate_cover_letter(profile, jd, g.jd_text, corpus)
     except Exception as exc:
         logger.warning("Cover letter generation failed: %s", exc)
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Could not generate cover letter. Try again in a moment.") from exc
-    return letter
+    letter = {**letter, "draft_key": _draft_key(g.report or {})}
+    await _save_outreach(g.id, "cover_letter", letter)
+    return {**letter, "stale": False}
 
 
-@router.post("/generations/{generation_id}/recruiter-message", summary="Generate grounded recruiter outreach message")
+@router.post("/generations/{generation_id}/recruiter-message", summary="Recruiter message for a run (saved per platform)")
 async def generation_recruiter_message(
     generation_id: uuid.UUID,
     body: OutreachOptions = OutreachOptions(),
     user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     g = await _get_generation(generation_id, user)
-    stored = g.report or {}
-    if not stored.get("jd") or not g.jd_text:
-        raise HTTPException(status.HTTP_409_CONFLICT, "This run has no job description to tailor against.")
+    saved = _saved_outreach(g.report or {})["recruiter"].get(body.platform)
+    if saved and not body.regenerate:
+        return saved
 
-    library_profile, corpus = await _library_for(g)
-    if library_profile is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "The resumes for this run are no longer in your library.")
-
+    profile, corpus, jd = await _outreach_inputs(g)
     _check_edit_budget(user.key)
-    jd = JDAnalysis.model_validate(stored["jd"])
     try:
-        msg = await generate_recruiter_message(library_profile, jd, g.jd_text, platform=body.platform, corpus=corpus)
+        msg = await generate_recruiter_message(profile, jd, g.jd_text, platform=body.platform, corpus=corpus)
     except Exception as exc:
         logger.warning("Recruiter message generation failed: %s", exc)
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Could not generate recruiter message. Try again in a moment.") from exc
-    return msg
+    msg = {**msg, "draft_key": _draft_key(g.report or {})}
+    await _save_outreach(g.id, "recruiter", msg, body.platform)
+    return {**msg, "stale": False}
 
 
 # ── Job Library & Application Tracker ────────────────────────────────────────

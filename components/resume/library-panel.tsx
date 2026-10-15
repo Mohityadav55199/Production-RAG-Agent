@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export function useResumeLibrary() {
   const [resumes, setResumes] = useState<ResumeSummary[]>([]);
@@ -32,8 +33,15 @@ export function useResumeLibrary() {
   }, []);
 
   useEffect(() => {
-    refetch();
-  }, [refetch]);
+    let cancelled = false;
+    listResumes()
+      .then((data) => !cancelled && setResumes(data))
+      .catch((err) => !cancelled && toast.error(err instanceof Error ? err.message : "Could not load your resumes"))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Indexing runs in the background; keep refreshing until every resume is ready, but give up after
   // a few minutes so a stuck job can't keep the page polling forever (the server re-indexes on restart).
@@ -61,6 +69,7 @@ interface LibraryPanelProps {
 }
 
 export function LibraryPanel({ resumes, loading, onChanged }: LibraryPanelProps) {
+  const { confirm, dialog } = useConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"file" | "text">("file");
   const [label, setLabel] = useState("");
@@ -84,7 +93,12 @@ export function LibraryPanel({ resumes, loading, onChanged }: LibraryPanelProps)
   };
 
   const remove = async (resume: ResumeSummary) => {
-    if (!window.confirm(`Remove "${resume.label}" from your library?`)) return;
+    const ok = await confirm({
+      title: `Remove "${resume.label}" from your library?`,
+      description: "Tailoring will no longer use its facts. Past runs keep the drafts they already made.",
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
     try {
       await deleteResume(resume.id);
       toast.success("Resume removed");
@@ -224,6 +238,7 @@ export function LibraryPanel({ resumes, loading, onChanged }: LibraryPanelProps)
           ))}
         </CardContent>
       </Card>
+      {dialog}
     </div>
   );
 }

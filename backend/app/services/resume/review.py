@@ -13,7 +13,7 @@ from __future__ import annotations
 import difflib
 import re
 
-from app.services.resume import ats
+from app.services.resume import ats, grounding
 from app.services.resume.latex import profile_plain_text
 from app.services.resume.schemas import JDAnalysis, Profile
 
@@ -67,13 +67,25 @@ def _bullet_sources(bullets: list[str], originals: list[str]) -> list[dict]:
     return rows
 
 
-def annotate(draft: Profile, library: Profile) -> dict:
-    """Per role and project: each bullet with its status and library source, plus library bullets left out."""
+def _with_skills(rows: list[dict], jd: JDAnalysis | None) -> list[dict]:
+    """Add the job-description skills each bullet mentions, so the editor can show why the score moves."""
+    terms = list(dict.fromkeys((jd.must_have + jd.nice_to_have) if jd else []))
+    must = {t.lower() for t in (jd.must_have if jd else [])}
+    for row in rows:
+        row["skills"] = [
+            {"term": t, "required": t.lower() in must} for t in terms if ats.term_in_text(t, row["text"])
+        ]
+    return rows
+
+
+def annotate(draft: Profile, library: Profile, jd: JDAnalysis | None = None) -> dict:
+    """Per role and project: each bullet with its status, library source and the job-description skills it
+    covers, plus library bullets left out."""
     experience = []
     for role in draft.experience:
         lib = find_item(library.experience, role.company, "company")
         originals = lib.bullets if lib else []
-        rows = _bullet_sources(role.bullets, originals)
+        rows = _with_skills(_bullet_sources(role.bullets, originals), jd)
         used = {_norm(r["source"]) for r in rows if r["source"]}
         experience.append({
             "company": role.company, "title": role.title, "in_library": lib is not None,
@@ -84,7 +96,7 @@ def annotate(draft: Profile, library: Profile) -> dict:
     for proj in draft.projects:
         lib = find_item(library.projects, proj.name, "name")
         originals = lib.bullets if lib else []
-        rows = _bullet_sources(proj.bullets, originals)
+        rows = _with_skills(_bullet_sources(proj.bullets, originals), jd)
         used = {_norm(r["source"]) for r in rows if r["source"]}
         projects.append({
             "name": proj.name, "in_library": lib is not None,
@@ -107,7 +119,7 @@ def _numbers(text: str) -> set[str]:
     return {re.sub(r"\s+", "", n) for n in re.findall(r"\d[\d,.]*\s*(?:%|k|x|\+)?", text.lower())}
 
 
-def claims_check(draft: Profile, library: Profile, corpus: str) -> list[str]:
+def claims_check(draft: Profile, library: Profile, corpus: str, jd: JDAnalysis | None = None) -> list[str]:
     """Warnings about edited content the library doesn't back. The user decides; nothing is removed."""
     warnings: list[str] = []
     known_numbers = _numbers(corpus)
@@ -125,6 +137,12 @@ def claims_check(draft: Profile, library: Profile, corpus: str) -> list[str]:
         extra = sorted(_numbers(text) - known_numbers)
         if extra:
             warnings.append(f"{where}: the number {', '.join(extra[:3])} is not in your library.")
+        skills = grounding.unsupported_skills(text, corpus, jd)
+        if skills:
+            warnings.append(f"{where}: {', '.join(skills[:3])} is not in your library.")
+        orgs = grounding.unsupported_orgs(text, corpus)
+        if orgs:
+            warnings.append(f"{where}: {', '.join(orgs[:2])} is not an employer in your library.")
 
     if draft.summary:
         check_text("Summary", draft.summary)

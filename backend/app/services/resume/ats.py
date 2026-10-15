@@ -71,7 +71,8 @@ SYNONYM_GROUPS = [
     {"microsoft azure", "azure"},
     {"kubernetes", "k8s"},
     {"docker", "containerization", "containers"},
-    {"ci/cd", "cicd", "continuous integration", "continuous deployment", "github actions", "gitlab ci"},
+    # Practices, not tools: "GitHub Actions" is evidence of CI/CD, but CI/CD is not evidence of GitHub Actions
+    {"ci/cd", "cicd", "continuous integration", "continuous delivery", "continuous deployment"},
     {"terraform", "tf", "infrastructure as code", "iac"},
     {"ansible", "configuration management"},
     {"linux", "unix", "bash", "shell scripting"},
@@ -106,7 +107,6 @@ SYNONYM_GROUPS = [
     {"agile", "scrum", "kanban"},
     # Platforms & tools written several ways
     {"core data", "coredata"},
-    {"ci/cd", "continuous integration", "continuous delivery", "continuous deployment"},
     {"kubernetes", "k8s"},
     {"postgresql", "postgres"},
     {"gcp", "google cloud"},
@@ -228,9 +228,15 @@ def pdf_text_and_meta(pdf: bytes) -> tuple[str, dict]:
 
 # ── Keyword matching ─────────────────────────────────────────────────────────
 
+# One-way evidence: a text naming one of these tools shows the practice, but not the reverse
+_IMPLIED_BY = {
+    "ci/cd": {"github actions", "gitlab ci", "jenkins", "circleci", "fastlane"},
+}
+
+
 def _variants(term: str) -> set[str]:
     t = term.lower().strip()
-    return {t} | _SYNONYMS.get(t, set())
+    return {t} | _SYNONYMS.get(t, set()) | _IMPLIED_BY.get(t, set())
 
 
 def _term_regex(variant: str) -> re.Pattern:

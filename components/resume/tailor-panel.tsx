@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Briefcase,
@@ -40,13 +40,31 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, copyText } from "@/lib/utils";
 
 interface TailorPanelProps {
   resumes: ResumeSummary[];
   onGoToLibrary: () => void;
   onFinished: () => void;
   onOpenEditor: (generationId: string) => void;
+}
+
+// The job description being worked on survives a reload (this browser only)
+const FORM_KEY = "resume-tailor-form";
+
+interface SavedForm {
+  jd: string;
+  outputName: string;
+  layout: RenderOptions;
+}
+
+function loadForm(): SavedForm | null {
+  try {
+    const raw = typeof window === "undefined" ? null : localStorage.getItem(FORM_KEY);
+    return raw ? (JSON.parse(raw) as SavedForm) : null;
+  } catch {
+    return null;
+  }
 }
 
 interface StepRow {
@@ -59,16 +77,26 @@ interface StepRow {
 export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }: TailorPanelProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const [jd, setJd] = useState("");
-  const [outputName, setOutputName] = useState("");
+  const [saved] = useState(loadForm);
+  const [jd, setJd] = useState(saved?.jd ?? "");
+  const [outputName, setOutputName] = useState(saved?.outputName ?? "");
   const [running, setRunning] = useState(false);
   const [steps, setSteps] = useState<StepRow[]>([]);
   const [result, setResult] = useState<TailorResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [reading, setReading] = useState(false);
-  const [layout, setLayout] = useState<RenderOptions>(DEFAULT_RENDER_OPTIONS);
+  const [layout, setLayout] = useState<RenderOptions>({ ...DEFAULT_RENDER_OPTIONS, ...saved?.layout });
   const [tracked, setTracked] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (jd.trim() || outputName.trim()) localStorage.setItem(FORM_KEY, JSON.stringify({ jd, outputName, layout }));
+      else localStorage.removeItem(FORM_KEY);
+    } catch {
+      // storage blocked: the form still works, it just won't survive a reload
+    }
+  }, [jd, outputName, layout]);
 
   const handleTrackJob = async () => {
     if (!result) return;
@@ -153,9 +181,12 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }
     }
   };
 
-  const copyTex = () => {
+  const copyTex = async () => {
     if (!result?.tex) return;
-    navigator.clipboard.writeText(result.tex);
+    if (!(await copyText(result.tex))) {
+      toast.error("Could not copy. Download the .tex file instead.");
+      return;
+    }
     setCopied(true);
     toast.success("LaTeX copied");
     setTimeout(() => setCopied(false), 2000);

@@ -110,6 +110,8 @@ export interface BulletInfo {
   text: string;
   status: "original" | "reworded" | "new";
   source: string | null;
+  /** Job-description skills this bullet mentions (required = a must-have). */
+  skills?: { term: string; required: boolean }[];
 }
 
 export interface AnnotatedRole {
@@ -154,6 +156,13 @@ export interface GenerationDetail extends GenerationSummary {
   options: RenderOptions;
   annotated: Annotated | null;
   gap: GapReport | null;
+  outreach?: SavedOutreach;
+}
+
+/** Outreach saved with a run. `stale` = the draft was edited after it was written. */
+export interface SavedOutreach {
+  cover_letter: CoverLetterResult | null;
+  recruiter: Partial<Record<"linkedin" | "email", RecruiterMessageResult>>;
 }
 
 export interface BulletOption {
@@ -363,6 +372,7 @@ export interface CoverLetterResult {
   sign_off: string;
   full_text: string;
   warnings: string[];
+  stale?: boolean;
 }
 
 export interface RecruiterMessageResult {
@@ -372,6 +382,7 @@ export interface RecruiterMessageResult {
   highlight_points: string[];
   platform: "linkedin" | "email";
   warnings: string[];
+  stale?: boolean;
 }
 
 export async function listJobs(status?: string): Promise<JobApplication[]> {
@@ -403,21 +414,25 @@ export function deleteJob(id: string): Promise<void> {
   return apiFetch<void>(`/resume/jobs/${id}`, { method: "DELETE" });
 }
 
-export function generateCoverLetter(generationId: string): Promise<CoverLetterResult> {
+/** The saved cover letter for a run, or a new one (always new when `regenerate`). */
+export function generateCoverLetter(generationId: string, regenerate = false): Promise<CoverLetterResult> {
   return apiFetch<CoverLetterResult>(`/resume/generations/${generationId}/cover-letter`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ regenerate }),
     timeout: 90000,
   });
 }
 
 export function generateRecruiterMessage(
   generationId: string,
-  platform: "linkedin" | "email" = "linkedin"
+  platform: "linkedin" | "email" = "linkedin",
+  regenerate = false
 ): Promise<RecruiterMessageResult> {
   return apiFetch<RecruiterMessageResult>(`/resume/generations/${generationId}/recruiter-message`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ platform }),
+    body: JSON.stringify({ platform, regenerate }),
     timeout: 90000,
   });
 }
