@@ -45,6 +45,10 @@ jobs:
       - name: Tests
         run: pytest -q
 
+      - name: Dependency audit
+        run: pip install pip-audit && pip-audit -r requirements.lock --no-deps
+        continue-on-error: true   # report only; known advisories without a fix should not block merges
+
   frontend:
     runs-on: ubuntu-latest
     steps:
@@ -62,3 +66,6 @@ jobs:
         run: npm run lint
       - name: Build
         run: npm run build
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
