@@ -56,6 +56,7 @@ class EvalItem:
     category: str = "general"
     difficulty: str = "medium"
     ground_truth: str = ""
+    history: list[dict[str, str]] = field(default_factory=list)   # earlier turns (follow-up questions)
 
 
 @dataclass
@@ -66,6 +67,8 @@ class RetrievedCandidate:
     chunk_index: int = 0
     section: str | None = None
     heading: str | None = None
+    char_start: int = 0
+    char_end: int = 0
 
 
 @dataclass
@@ -80,6 +83,7 @@ class QueryResult:
     top_source: str | None
     top_score: float
     latency_ms: float
+    section_rank: int = 0          # 1-based rank of the first chunk inside the expected section; 0 = none
 
 
 @dataclass
@@ -94,6 +98,9 @@ class BenchmarkSummary:
     category_breakdown: dict[str, dict[str, float]]
     difficulty_breakdown: dict[str, dict[str, float]]
     missed_queries: list[dict[str, Any]]
+    section_hit_1: float = 0.0
+    section_hit_5: float = 0.0
+    section_mrr: float = 0.0
 
 
 # ── In-Memory Fast Semantic / Lexical Indexer for Offline Tuning ──────────────
@@ -150,6 +157,8 @@ class LocalBenchmarkIndex:
                     "section": c.section,
                     "heading": c.heading,
                     "chunk_index": c.chunk_index,
+                    "char_start": c.char_start,
+                    "char_end": c.char_end,
                     "tokens": tokens,
                 })
                 doc_count += 1
@@ -178,6 +187,7 @@ class LocalBenchmarkIndex:
         top_k: int = 5,
         min_score: float = 0.0,
         max_gap: float | None = None,
+        history: list[dict[str, str]] | None = None,   # unused: the lexical index has no query rewriting
     ) -> list[RetrievedCandidate]:
         q_tokens = self._tokenize(query)
         if not q_tokens:
@@ -221,6 +231,8 @@ class LocalBenchmarkIndex:
                     chunk_index=ch["chunk_index"],
                     section=ch["section"],
                     heading=ch["heading"],
+                    char_start=ch["char_start"],
+                    char_end=ch["char_end"],
                 )
             )
             if len(candidates) >= top_k:
@@ -231,29 +243,127 @@ class LocalBenchmarkIndex:
 
 # ── Live Qdrant + Gemini Retrieval Searcher ───────────────────────────────────
 
-async def live_search(
-    query: str,
-    top_k: int = 5,
-    min_score: float = 0.0,
-    max_gap: float | None = None,
-) -> list[RetrievedCandidate]:
-    from app.services.retrieval_service import retrieve_chunks
+class LiveBenchmarkIndex:
+    """
+    The real retrieval path (Gemini embeddings + Qdrant cosine search) over the benchmark corpus.
 
-    chunks = await retrieve_chunks(
-        query=query,
-        top_k=top_k,
-        min_score=min_score,
-        max_gap=max_gap,
-    )
-    return [
-        RetrievedCandidate(
-            filename=c.filename,
-            text=c.text,
-            score=c.score,
-            chunk_index=c.chunk_index,
+    The corpus is embedded once into a throw-away embedded Qdrant store under ``eval/.qdrant`` (never the
+    application's own collection), then every question is embedded with RETRIEVAL_QUERY and searched, with the
+    same score floor and gap filter as ``retrieve_chunks``. With ``condense=True`` follow-up questions are first
+    rewritten by ``condense_question``, exactly as the chat pipeline does.
+    """
+
+    COLLECTION = "rag_eval"
+
+    def __init__(self, corpus_dir: Path, condense: bool = False, rebuild: bool = False):
+        self.corpus_dir = corpus_dir
+        self.condense = condense
+        self.rebuild = rebuild
+        self.chunks: list[dict[str, Any]] = []
+        self._client = None
+        self._ready = False
+
+    async def _build(self) -> None:
+        from qdrant_client import AsyncQdrantClient
+        from qdrant_client.http import models as qm
+
+        from app.services.embedding_service import embed_batch_with_retry
+
+        self._client = AsyncQdrantClient(path=str(SCRIPT_DIR / ".qdrant"))
+        existing = {c.name for c in (await self._client.get_collections()).collections}
+
+        for file_path in sorted(self.corpus_dir.glob("*.md")):
+            for c in build_chunks(file_path.read_text(encoding="utf-8")):
+                self.chunks.append({"filename": file_path.name, "text": c.text, "chunk_index": c.chunk_index,
+                                    "section": c.section, "heading": c.heading,
+                                    "char_start": c.char_start, "char_end": c.char_end})
+
+        if self.COLLECTION in existing and not self.rebuild:
+            info = await self._client.get_collection(self.COLLECTION)
+            if info.points_count == len(self.chunks):
+                self._ready = True
+                return
+        if self.COLLECTION in existing:
+            await self._client.delete_collection(self.COLLECTION)
+
+        print(f"Embedding {len(self.chunks)} corpus chunks with Gemini ...")
+        vectors = await embed_batch_with_retry([c["text"] for c in self.chunks], task_type="RETRIEVAL_DOCUMENT")
+        await self._client.create_collection(
+            self.COLLECTION,
+            vectors_config=qm.VectorParams(size=len(vectors[0]), distance=qm.Distance.COSINE),
         )
-        for c in chunks
-    ]
+        await self._client.upsert(
+            self.COLLECTION,
+            points=[qm.PointStruct(id=i, vector=v, payload=self.chunks[i]) for i, v in enumerate(vectors)],
+        )
+        self._ready = True
+
+    async def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        min_score: float = 0.0,
+        max_gap: float | None = None,
+        history: list[dict[str, str]] | None = None,
+    ) -> list[RetrievedCandidate]:
+        from app.services.embedding_service import embed_batch_with_retry
+
+        if not self._ready:
+            await self._build()
+        if self.condense and history:
+            from langchain_core.messages import AIMessage, HumanMessage
+
+            from app.services.query_rewriter import condense_question
+
+            msgs = [(HumanMessage if h["role"] == "user" else AIMessage)(content=h["content"]) for h in history]
+            query = await condense_question(query, msgs)
+
+        vector = (await embed_batch_with_retry([query], task_type="RETRIEVAL_QUERY"))[0]
+        points = (await self._client.query_points(
+            self.COLLECTION, query=vector, limit=top_k, with_payload=True)).points
+        hits = [p for p in points if p.score >= min_score]
+        if hits and max_gap is not None and max_gap >= 0.0:
+            hits = [p for p in hits if p.score >= hits[0].score - max_gap]
+        return [
+            RetrievedCandidate(
+                filename=p.payload["filename"], text=p.payload["text"], score=p.score,
+                chunk_index=p.payload["chunk_index"], section=p.payload.get("section"),
+                heading=p.payload.get("heading"),
+                char_start=p.payload.get("char_start", 0), char_end=p.payload.get("char_end", 0),
+            )
+            for p in hits
+        ]
+
+    def search_sync(self, *args, **kwargs) -> list[RetrievedCandidate]:
+        return asyncio.run(self.search(*args, **kwargs))
+
+
+# ── Section ground truth ──────────────────────────────────────────────────────
+
+_MIN_SECTION_OVERLAP = 100   # characters a chunk must share with the expected section to count as covering it
+
+
+def section_ranges(corpus_dir: Path) -> dict[tuple[str, str], tuple[int, int]]:
+    """(file, heading text) -> (start, end) character range of that section in the file."""
+    ranges: dict[tuple[str, str], tuple[int, int]] = {}
+    for file_path in sorted(corpus_dir.glob("*.md")):
+        text = file_path.read_text(encoding="utf-8")
+        marks = [(m.start(), m.group(2).strip()) for m in re.finditer(r"^(#{1,6})\s+(.+)$", text, re.M)]
+        for i, (start, title) in enumerate(marks):
+            end = marks[i + 1][0] if i + 1 < len(marks) else len(text)
+            ranges[(file_path.name, title)] = (start, end)
+    return ranges
+
+
+def covers_section(cand: RetrievedCandidate, item: EvalItem, ranges: dict[tuple[str, str], tuple[int, int]]) -> bool:
+    """True when the chunk is from an expected file and actually overlaps the expected section's text."""
+    if cand.filename not in item.expected_sources:
+        return False
+    span = ranges.get((cand.filename, item.expected_section or ""))
+    if span is None:
+        return True   # no section recorded for this item: a file-level hit is all we can check
+    overlap = min(cand.char_end, span[1]) - max(cand.char_start, span[0])
+    return overlap >= min(_MIN_SECTION_OVERLAP, span[1] - span[0])
 
 
 # ── Evaluation Engine ─────────────────────────────────────────────────────────
@@ -264,12 +374,15 @@ def evaluate_dataset(
     top_k: int = 5,
     min_score: float = 0.0,
     max_gap: float | None = None,
+    ranges: dict[tuple[str, str], tuple[int, int]] | None = None,
 ) -> BenchmarkSummary:
     results: list[QueryResult] = []
+    ranges = ranges or {}
 
     for item in dataset:
         t0 = time.perf_counter()
-        candidates = search_fn(item.question, top_k=top_k, min_score=min_score, max_gap=max_gap)
+        candidates = search_fn(item.question, top_k=top_k, min_score=min_score, max_gap=max_gap,
+                               history=item.history)
         latency = (time.perf_counter() - t0) * 1000.0
 
         retrieved_sources = [c.filename for c in candidates]
@@ -286,6 +399,9 @@ def evaluate_dataset(
                 reciprocal_rank = 1.0 / rank
                 break
 
+        section_rank = next(
+            (rank for rank, c in enumerate(candidates, start=1) if covers_section(c, item, ranges)), 0)
+
         top_src = retrieved_sources[0] if retrieved_sources else None
         top_sc = candidates[0].score if candidates else 0.0
 
@@ -301,6 +417,7 @@ def evaluate_dataset(
                 top_source=top_src,
                 top_score=top_sc,
                 latency_ms=latency,
+                section_rank=section_rank,
             )
         )
 
@@ -311,6 +428,9 @@ def evaluate_dataset(
     hit_rate_10 = sum(1 for r in results if r.hit_at_10) / n
     mrr = sum(r.reciprocal_rank for r in results) / n
     avg_latency = sum(r.latency_ms for r in results) / n
+    section_hit_1 = sum(1 for r in results if r.section_rank == 1) / n
+    section_hit_5 = sum(1 for r in results if 0 < r.section_rank <= 5) / n
+    section_mrr = sum(1.0 / r.section_rank for r in results if r.section_rank) / n
 
     # Category breakdown
     cat_stats: dict[str, list[QueryResult]] = {}
@@ -327,6 +447,8 @@ def evaluate_dataset(
             "hit@3": sum(1 for r in group if r.hit_at_3) / gn,
             "hit@5": sum(1 for r in group if r.hit_at_5) / gn,
             "mrr": sum(r.reciprocal_rank for r in group) / gn,
+            "sec@1": sum(1 for r in group if r.section_rank == 1) / gn,
+            "sec@5": sum(1 for r in group if 0 < r.section_rank <= 5) / gn,
         }
 
     cat_breakdown = {k: calc_group(v) for k, v in cat_stats.items()}
@@ -340,9 +462,11 @@ def evaluate_dataset(
             "retrieved": [c.filename for c in r.candidates],
             "top_score": r.top_score,
             "category": r.item.category,
+            "expected_section": r.item.expected_section,
+            "file_hit": r.hit_at_5,
         }
         for r in results
-        if not r.hit_at_5
+        if not (0 < r.section_rank <= 5)
     ]
 
     return BenchmarkSummary(
@@ -356,6 +480,9 @@ def evaluate_dataset(
         category_breakdown=cat_breakdown,
         difficulty_breakdown=diff_breakdown,
         missed_queries=missed,
+        section_hit_1=section_hit_1,
+        section_hit_5=section_hit_5,
+        section_mrr=section_mrr,
     )
 
 
@@ -375,33 +502,38 @@ def print_summary_report(summary: BenchmarkSummary, params_info: str):
     print(f"  • Hit-Rate@5  : {summary.hit_rate_5 * 100:6.2f}%  (Expected source in Top 5)")
     print(f"  • Hit-Rate@10 : {summary.hit_rate_10 * 100:6.2f}%  (Expected source in Top 10)")
     print(f"  • MRR         : {summary.mrr:6.4f}   (Mean Reciprocal Rank)")
+    print(f"  • Section@1   : {summary.section_hit_1 * 100:6.2f}%  (Top chunk covers the expected section)")
+    print(f"  • Section@5   : {summary.section_hit_5 * 100:6.2f}%  (Expected section covered in Top 5)")
+    print(f"  • Section MRR : {summary.section_mrr:6.4f}")
     print("-" * 80)
 
     print(" BREAKDOWN BY CATEGORY ".center(80, "-"))
-    print(f"{'Category':<22} | {'Count':<6} | {'Hit@1':<8} | {'Hit@3':<8} | {'Hit@5':<8} | {'MRR':<8}")
+    print(f"{'Category':<22} | {'Count':<6} | {'Hit@1':<8} | {'Hit@3':<8} | {'Hit@5':<8} | {'MRR':<8} | {'Sec@1':<8} | {'Sec@5':<8}")
     print("-" * 80)
     for cat, stats in sorted(summary.category_breakdown.items()):
         print(
             f"{cat:<22} | {int(stats['count']):<6} | {stats['hit@1']*100:6.1f}% | "
-            f"{stats['hit@3']*100:6.1f}% | {stats['hit@5']*100:6.1f}% | {stats['mrr']:6.3f}"
+            f"{stats['hit@3']*100:6.1f}% | {stats['hit@5']*100:6.1f}% | {stats['mrr']:6.3f} | "
+            f"{stats['sec@1']*100:6.1f}% | {stats['sec@5']*100:6.1f}%"
         )
 
     print("-" * 80)
     print(" BREAKDOWN BY DIFFICULTY ".center(80, "-"))
-    print(f"{'Difficulty':<22} | {'Count':<6} | {'Hit@1':<8} | {'Hit@3':<8} | {'Hit@5':<8} | {'MRR':<8}")
+    print(f"{'Difficulty':<22} | {'Count':<6} | {'Hit@1':<8} | {'Hit@3':<8} | {'Hit@5':<8} | {'MRR':<8} | {'Sec@1':<8} | {'Sec@5':<8}")
     print("-" * 80)
     for diff, stats in sorted(summary.difficulty_breakdown.items()):
         print(
             f"{diff:<22} | {int(stats['count']):<6} | {stats['hit@1']*100:6.1f}% | "
-            f"{stats['hit@3']*100:6.1f}% | {stats['hit@5']*100:6.1f}% | {stats['mrr']:6.3f}"
+            f"{stats['hit@3']*100:6.1f}% | {stats['hit@5']*100:6.1f}% | {stats['mrr']:6.3f} | "
+            f"{stats['sec@1']*100:6.1f}% | {stats['sec@5']*100:6.1f}%"
         )
 
     if summary.missed_queries:
         print("-" * 80)
-        print(f" MISSED QUERIES (Hit@5 = 0) [Count: {len(summary.missed_queries)}] ".center(80, "-"))
+        print(f" MISSED QUERIES (expected section not in Top 5) [Count: {len(summary.missed_queries)}] ".center(80, "-"))
         for m in summary.missed_queries:
             print(f"  [Q#{m['id']}] {m['question']}")
-            print(f"     Expected : {m['expected']}")
+            print(f"     Expected : {m['expected']} / {m['expected_section']} (right file in Top 5: {m['file_hit']})")
             print(f"     Retrieved: {m['retrieved']}")
             print(f"     Top Score: {m['top_score']:.4f} | Category: {m['category']}")
     else:
@@ -425,7 +557,7 @@ def run_parameter_tuning(corpus_dir: Path, dataset: list[EvalItem]):
 
     results = []
 
-    print(f"{'top_k':<6} | {'min_score':<10} | {'max_gap':<9} | {'Hit@1':<8} | {'Hit@3':<8} | {'Hit@5':<8} | {'MRR':<8}")
+    print(f"{'top_k':<6} | {'min_score':<10} | {'max_gap':<9} | {'Hit@1':<8} | {'Hit@3':<8} | {'Hit@5':<8} | {'MRR':<8} | {'Sec@1':<8} | {'Sec@5':<8}")
     print("-" * 90)
 
     for k in top_k_options:
@@ -466,7 +598,7 @@ def run_chunker_tuning(corpus_dir: Path, dataset: list[EvalItem]):
         {"min_size": 800, "max_size": 2500, "overlap": 300},
     ]
 
-    print(f"{'min_size':<10} | {'max_size':<10} | {'overlap':<9} | {'Total Chunks':<14} | {'Hit@1':<8} | {'Hit@3':<8} | {'Hit@5':<8} | {'MRR':<8}")
+    print(f"{'min_size':<10} | {'max_size':<10} | {'overlap':<9} | {'Total Chunks':<14} | {'Hit@1':<8} | {'Hit@3':<8} | {'Hit@5':<8} | {'MRR':<8} | {'Sec@1':<8} | {'Sec@5':<8}")
     print("-" * 90)
 
     for cfg in configs:
@@ -504,6 +636,7 @@ def load_dataset(dataset_path: Path) -> list[EvalItem]:
             category=d.get("category", "general"),
             difficulty=d.get("difficulty", "medium"),
             ground_truth=d.get("ground_truth", ""),
+            history=d.get("history", []),
         )
         for d in data
     ]
@@ -518,7 +651,11 @@ def main():
     parser.add_argument("--max-gap", type=float, default=None, help="Relative score gap from top hit (default: None).")
     parser.add_argument("--tune", action="store_true", help="Run grid search parameter sweep for top_k, min_score, and max_gap.")
     parser.add_argument("--tune-chunker", action="store_true", help="Run chunker parameter sweep across size and overlap.")
-    parser.add_argument("--live", action="store_true", help="Execute against live Qdrant and Gemini API.")
+    parser.add_argument("--live", action="store_true",
+                        help="Embed the corpus with Gemini into a private Qdrant store and search it (needs GOOGLE_API_KEY).")
+    parser.add_argument("--condense", action="store_true",
+                        help="With --live: rewrite follow-up questions into standalone queries before searching.")
+    parser.add_argument("--rebuild", action="store_true", help="With --live: re-embed the corpus even if already indexed.")
     parser.add_argument("--json-out", type=Path, default=None, help="Save evaluation summary to JSON file.")
 
     args = parser.parse_args()
@@ -543,13 +680,10 @@ def main():
         return
 
     if args.live:
-        print("Running live evaluation against Qdrant + Gemini ...")
-
-        def live_search_wrapper(q: str, top_k: int, min_score: float, max_gap: float | None):
-            return asyncio.run(live_search(q, top_k=top_k, min_score=min_score, max_gap=max_gap))
-
-        search_fn = live_search_wrapper
-        mode_label = "Live Qdrant + Gemini"
+        print("Running live evaluation against Gemini embeddings + a private Qdrant store ...")
+        live = LiveBenchmarkIndex(args.corpus, condense=args.condense, rebuild=args.rebuild)
+        search_fn = live.search_sync
+        mode_label = "Live Gemini + Qdrant" + (" + question condensing" if args.condense else "")
     else:
         index = LocalBenchmarkIndex(args.corpus)
         search_fn = index.search
@@ -561,6 +695,7 @@ def main():
         top_k=args.top_k,
         min_score=args.min_score,
         max_gap=args.max_gap,
+        ranges=section_ranges(args.corpus),
     )
 
     params_info = f"Mode: {mode_label} | top_k: {args.top_k} | min_score: {args.min_score} | max_gap: {args.max_gap}"
@@ -581,6 +716,9 @@ def main():
                 "hit_rate_5": summary.hit_rate_5,
                 "hit_rate_10": summary.hit_rate_10,
                 "mrr": summary.mrr,
+                "section_hit_1": summary.section_hit_1,
+                "section_hit_5": summary.section_hit_5,
+                "section_mrr": summary.section_mrr,
                 "avg_latency_ms": summary.avg_latency_ms,
             },
             "category_breakdown": summary.category_breakdown,

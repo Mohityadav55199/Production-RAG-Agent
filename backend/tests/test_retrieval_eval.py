@@ -12,6 +12,9 @@ from eval.evaluate import (
     LocalBenchmarkIndex,
     evaluate_dataset,
     BenchmarkSummary,
+    RetrievedCandidate,
+    covers_section,
+    section_ranges,
 )
 
 EVAL_DIR = Path(__file__).resolve().parent.parent / "eval"
@@ -20,10 +23,10 @@ CORPUS_DIR = EVAL_DIR / "corpus"
 
 
 def test_eval_dataset_integrity():
-    """Verify that dataset.json exists and contains exactly 30 valid question/source pairs."""
+    """Verify that dataset.json exists and contains exactly 48 valid question/source pairs."""
     assert DATASET_PATH.exists(), f"Missing dataset file: {DATASET_PATH}"
     dataset = load_dataset(DATASET_PATH)
-    assert len(dataset) == 30, f"Expected 30 evaluation items, got {len(dataset)}"
+    assert len(dataset) == 48, f"Expected 48 evaluation items, got {len(dataset)}"
 
     corpus_files = {p.name for p in CORPUS_DIR.glob("*.md")}
     assert len(corpus_files) >= 5, "Corpus must have at least 5 benchmark documents"
@@ -34,7 +37,7 @@ def test_eval_dataset_integrity():
         assert item.expected_sources, f"Item {item.id} has no expected sources"
         for src in item.expected_sources:
             assert src in corpus_files, f"Item {item.id} references non-existent corpus source '{src}'"
-        assert item.category in ("factual", "semantic_paraphrase", "conceptual", "technical_numeric", "general")
+        assert item.category in ("factual", "semantic_paraphrase", "conceptual", "technical_numeric", "follow_up", "general")
         assert item.difficulty in ("easy", "medium", "hard")
 
 
@@ -49,13 +52,35 @@ def test_retrieval_metrics_computation():
         top_k=5,
         min_score=0.0,
         max_gap=None,
+        ranges=section_ranges(CORPUS_DIR),
     )
 
-    assert summary.total_queries == 30
+    assert summary.total_queries == 48
     assert summary.hit_rate_5 >= 0.90, f"Hit-Rate@5 should be at least 90%, got {summary.hit_rate_5:.2f}"
     assert summary.mrr >= 0.85, f"MRR should be at least 0.85, got {summary.mrr:.4f}"
     assert "factual" in summary.category_breakdown
     assert "easy" in summary.difficulty_breakdown
+    assert 0.0 < summary.section_hit_5 <= summary.hit_rate_5 + 1e-9   # a section hit implies a file hit
+    assert summary.section_mrr <= summary.mrr + 1e-9
+
+
+def test_follow_up_items_carry_history():
+    follow_ups = [i for i in load_dataset(DATASET_PATH) if i.category == "follow_up"]
+    assert len(follow_ups) >= 8
+    for item in follow_ups:
+        assert [t["role"] for t in item.history] == ["user", "assistant"], f"Item {item.id} needs one prior exchange"
+
+
+def test_section_coverage_needs_the_right_section_not_just_the_file():
+    ranges = section_ranges(CORPUS_DIR)
+    item = next(i for i in load_dataset(DATASET_PATH) if i.expected_section == "Adaptive Semantic Chunker")
+    start, end = ranges[(item.expected_sources[0], item.expected_section)]
+    inside = RetrievedCandidate(item.expected_sources[0], "", 1.0, char_start=start, char_end=end)
+    elsewhere = RetrievedCandidate(item.expected_sources[0], "", 1.0, char_start=0, char_end=start - 1)
+    other_file = RetrievedCandidate("deployment_and_devops.md", "", 1.0, char_start=start, char_end=end)
+    assert covers_section(inside, item, ranges)
+    assert not covers_section(elsewhere, item, ranges)
+    assert not covers_section(other_file, item, ranges)
 
 
 def test_score_filtering_impact():

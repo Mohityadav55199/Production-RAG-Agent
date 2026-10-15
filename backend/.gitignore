@@ -31,3 +31,6 @@ qdrant_data/
 # ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 logs/
+
+# Retrieval eval: private embedded Qdrant store built by --live
+eval/.qdrant/

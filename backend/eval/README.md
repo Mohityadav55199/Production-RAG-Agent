@@ -91,3 +91,24 @@ Run the test suite with pytest:
 pytest backend/tests/test_retrieval_eval.py
 ```
 Validates schema integrity, 30 question coverage, and metric computation correctness.
+
+---
+
+## 4. Live mode, section scoring and follow-up questions
+
+The dataset has **48** questions: 11 paraphrases (little wording shared with the source) and 8 `follow_up`
+questions that carry a `history` of one earlier exchange ("And who is allowed to see the admin endpoints?").
+
+**Section scoring.** File-level hits are easy on a small corpus, so every run also reports `Section@1`,
+`Section@5` and `Section MRR`: a chunk only counts when it overlaps the `expected_section` text by at least
+100 characters. Missed queries are listed when the *section* is not found, with whether the right file was.
+
+**Live mode** measures the real path (Gemini embeddings, cosine search in Qdrant):
+```bash
+# needs GOOGLE_API_KEY (and GROQ_API_KEY for --condense) in backend/.env
+python backend/eval/evaluate.py --live --min-score 0.63 --max-gap 0.05 --json-out baseline.json
+python backend/eval/evaluate.py --live --condense --min-score 0.63 --max-gap 0.05 --json-out condensed.json
+```
+The corpus is embedded once into a private store at `backend/eval/.qdrant` (git-ignored), never your application
+collection; add `--rebuild` to re-embed. `--condense` rewrites follow-ups with `condense_question`, as chat does.
+Compare the `follow_up` rows and `Section@5` between the two JSON files.

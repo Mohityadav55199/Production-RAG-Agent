@@ -2,7 +2,9 @@
   {
     "id": 1,
     "question": "What model is used as the primary LLM and what is its default temperature?",
-    "expected_sources": ["architecture_overview.md"],
+    "expected_sources": [
+      "architecture_overview.md"
+    ],
     "expected_section": "LLM Fallback Architecture",
     "category": "factual",
     "difficulty": "easy",
@@ -11,7 +13,9 @@
   {
     "id": 2,
     "question": "What is the secondary cloud provider when the primary LLM provider is down?",
-    "expected_sources": ["architecture_overview.md"],
+    "expected_sources": [
+      "architecture_overview.md"
+    ],
     "expected_section": "LLM Fallback Architecture",
     "category": "semantic_paraphrase",
     "difficulty": "medium",
@@ -20,7 +24,9 @@
   {
     "id": 3,
     "question": "What are the three models in the primary LLM fallback chain?",
-    "expected_sources": ["architecture_overview.md"],
+    "expected_sources": [
+      "architecture_overview.md"
+    ],
     "expected_section": "LLM Fallback Architecture",
     "category": "factual",
     "difficulty": "easy",
@@ -29,7 +35,9 @@
   {
     "id": 4,
     "question": "How does the backend stream answers and citations to the frontend?",
-    "expected_sources": ["architecture_overview.md"],
+    "expected_sources": [
+      "architecture_overview.md"
+    ],
     "expected_section": "Query Pipeline and Streaming Lifecycle",
     "category": "conceptual",
     "difficulty": "medium",
@@ -38,7 +46,9 @@
   {
     "id": 5,
     "question": "What are the default values for the absolute score floor and relative gap filters?",
-    "expected_sources": ["architecture_overview.md"],
+    "expected_sources": [
+      "architecture_overview.md"
+    ],
     "expected_section": "Query Pipeline and Streaming Lifecycle",
     "category": "technical_numeric",
     "difficulty": "hard",
@@ -47,7 +57,9 @@
   {
     "id": 6,
     "question": "How long do JWT access tokens remain valid before expiring?",
-    "expected_sources": ["security_and_auth_policy.md"],
+    "expected_sources": [
+      "security_and_auth_policy.md"
+    ],
     "expected_section": "Authentication Protocol",
     "category": "factual",
     "difficulty": "easy",
@@ -56,7 +68,9 @@
   {
     "id": 7,
     "question": "What header is used to safely identify client IP addresses behind Cloudflare and Vercel?",
-    "expected_sources": ["security_and_auth_policy.md"],
+    "expected_sources": [
+      "security_and_auth_policy.md"
+    ],
     "expected_section": "Reverse Proxy and IP Rate Limiting",
     "category": "factual",
     "difficulty": "medium",
@@ -65,7 +79,9 @@
   {
     "id": 8,
     "question": "What are the administrator privileges compared to standard users?",
-    "expected_sources": ["security_and_auth_policy.md"],
+    "expected_sources": [
+      "security_and_auth_policy.md"
+    ],
     "expected_section": "Role-Based Access Control (RBAC)",
     "category": "conceptual",
     "difficulty": "medium",
@@ -74,7 +90,9 @@
   {
     "id": 9,
     "question": "What rate limits are enforced on the login endpoint versus general authenticated routes?",
-    "expected_sources": ["security_and_auth_policy.md"],
+    "expected_sources": [
+      "security_and_auth_policy.md"
+    ],
     "expected_section": "Reverse Proxy and IP Rate Limiting",
     "category": "technical_numeric",
     "difficulty": "medium",
@@ -83,7 +101,9 @@
   {
     "id": 10,
     "question": "How does the vector database prevent multi-tenant data leaks between organizations?",
-    "expected_sources": ["security_and_auth_policy.md"],
+    "expected_sources": [
+      "security_and_auth_policy.md"
+    ],
     "expected_section": "Document Data Isolation",
     "category": "conceptual",
     "difficulty": "medium",
@@ -92,7 +112,9 @@
   {
     "id": 11,
     "question": "Which cloud platform hosts the Dockerized FastAPI backend?",
-    "expected_sources": ["deployment_and_devops.md"],
+    "expected_sources": [
+      "deployment_and_devops.md"
+    ],
     "expected_section": "Infrastructure Architecture",
     "category": "factual",
     "difficulty": "easy",
@@ -101,7 +123,9 @@
   {
     "id": 12,
     "question": "What is the production Vercel frontend URL allowed by CORS?",
-    "expected_sources": ["deployment_and_devops.md"],
+    "expected_sources": [
+      "deployment_and_devops.md"
+    ],
     "expected_section": "Cross-Origin Resource Sharing (CORS)",
     "category": "factual",
     "difficulty": "easy",
@@ -110,7 +134,9 @@
   {
     "id": 13,
     "question": "Why are wildcard CORS origins forbidden in production?",
-    "expected_sources": ["deployment_and_devops.md"],
+    "expected_sources": [
+      "deployment_and_devops.md"
+    ],
     "expected_section": "Cross-Origin Resource Sharing (CORS)",
     "category": "conceptual",
     "difficulty": "medium",
@@ -119,7 +145,9 @@
   {
     "id": 14,
     "question": "What is the difference between the basic /health and /health/detailed endpoints?",
-    "expected_sources": ["deployment_and_devops.md"],
+    "expected_sources": [
+      "deployment_and_devops.md"
+    ],
     "expected_section": "Health Check and Monitoring",
     "category": "conceptual",
     "difficulty": "medium",
@@ -128,7 +156,9 @@
   {
     "id": 15,
     "question": "What is the maximum allowed image pixel count to avoid out of memory crashes?",
-    "expected_sources": ["deployment_and_devops.md"],
+    "expected_sources": [
+      "deployment_and_devops.md"
+    ],
     "expected_section": "Resource Constraints and Scaling",
     "category": "technical_numeric",
     "difficulty": "medium",
@@ -137,7 +167,9 @@
   {
     "id": 16,
     "question": "What embedding model is used and what is the output vector dimension?",
-    "expected_sources": ["embedding_and_chunking_spec.md"],
+    "expected_sources": [
+      "embedding_and_chunking_spec.md"
+    ],
     "expected_section": "Embedding Model Configuration",
     "category": "factual",
     "difficulty": "easy",
@@ -146,7 +178,9 @@
   {
     "id": 17,
     "question": "What are the two task types used for embedding documents versus search queries?",
-    "expected_sources": ["embedding_and_chunking_spec.md"],
+    "expected_sources": [
+      "embedding_and_chunking_spec.md"
+    ],
     "expected_section": "Embedding Model Configuration",
     "category": "factual",
     "difficulty": "medium",
@@ -155,7 +189,9 @@
   {
     "id": 18,
     "question": "What are the min chunk size, max chunk size, and chunk overlap settings?",
-    "expected_sources": ["embedding_and_chunking_spec.md"],
+    "expected_sources": [
+      "embedding_and_chunking_spec.md"
+    ],
     "expected_section": "Adaptive Semantic Chunker",
     "category": "technical_numeric",
     "difficulty": "medium",
@@ -164,7 +200,9 @@
   {
     "id": 19,
     "question": "How many chunks are processed per embedding batch?",
-    "expected_sources": ["embedding_and_chunking_spec.md"],
+    "expected_sources": [
+      "embedding_and_chunking_spec.md"
+    ],
     "expected_section": "Resilient API Call Retries and Batching",
     "category": "technical_numeric",
     "difficulty": "easy",
@@ -173,7 +211,9 @@
   {
     "id": 20,
     "question": "What retry strategy and jitter mechanism are used when embedding API calls fail?",
-    "expected_sources": ["embedding_and_chunking_spec.md"],
+    "expected_sources": [
+      "embedding_and_chunking_spec.md"
+    ],
     "expected_section": "Resilient API Call Retries and Batching",
     "category": "conceptual",
     "difficulty": "hard",
@@ -182,7 +222,9 @@
   {
     "id": 21,
     "question": "Which library is used to parse PDF documents and extract structured text?",
-    "expected_sources": ["data_ingestion_pipeline.md"],
+    "expected_sources": [
+      "data_ingestion_pipeline.md"
+    ],
     "expected_section": "Supported File Formats and Extraction Strategies",
     "category": "factual",
     "difficulty": "easy",
@@ -191,7 +233,9 @@
   {
     "id": 22,
     "question": "How are scanned pages in PDFs handled when direct text extraction fails?",
-    "expected_sources": ["data_ingestion_pipeline.md"],
+    "expected_sources": [
+      "data_ingestion_pipeline.md"
+    ],
     "expected_section": "Supported File Formats and Extraction Strategies",
     "category": "conceptual",
     "difficulty": "medium",
@@ -200,7 +244,9 @@
   {
     "id": 23,
     "question": "How does the ingestion pipeline generate deterministic vector IDs to ensure idempotency?",
-    "expected_sources": ["data_ingestion_pipeline.md"],
+    "expected_sources": [
+      "data_ingestion_pipeline.md"
+    ],
     "expected_section": "Deterministic Point ID Generation",
     "category": "conceptual",
     "difficulty": "medium",
@@ -209,7 +255,9 @@
   {
     "id": 24,
     "question": "What happens if a document upload worker crashes halfway through processing?",
-    "expected_sources": ["data_ingestion_pipeline.md"],
+    "expected_sources": [
+      "data_ingestion_pipeline.md"
+    ],
     "expected_section": "Checkpointing and Failure Recovery",
     "category": "conceptual",
     "difficulty": "medium",
@@ -218,7 +266,9 @@
   {
     "id": 25,
     "question": "How are spreadsheet files like XLSX and CSV represented after parsing?",
-    "expected_sources": ["data_ingestion_pipeline.md"],
+    "expected_sources": [
+      "data_ingestion_pipeline.md"
+    ],
     "expected_section": "Supported File Formats and Extraction Strategies",
     "category": "factual",
     "difficulty": "medium",
@@ -227,7 +277,9 @@
   {
     "id": 26,
     "question": "What are the required core collaboration hours in Eastern Standard Time?",
-    "expected_sources": ["company_employee_handbook.md"],
+    "expected_sources": [
+      "company_employee_handbook.md"
+    ],
     "expected_section": "Working Hours and Remote Work Policy",
     "category": "technical_numeric",
     "difficulty": "easy",
@@ -236,7 +288,9 @@
   {
     "id": 27,
     "question": "How many vacation days and dedicated sick leave days do employees receive annually?",
-    "expected_sources": ["company_employee_handbook.md"],
+    "expected_sources": [
+      "company_employee_handbook.md"
+    ],
     "expected_section": "Paid Time Off (PTO) and Leaves",
     "category": "factual",
     "difficulty": "easy",
@@ -245,7 +299,9 @@
   {
     "id": 28,
     "question": "What is the duration of paid parental leave for caregivers?",
-    "expected_sources": ["company_employee_handbook.md"],
+    "expected_sources": [
+      "company_employee_handbook.md"
+    ],
     "expected_section": "Paid Time Off (PTO) and Leaves",
     "category": "factual",
     "difficulty": "easy",
@@ -254,7 +310,9 @@
   {
     "id": 29,
     "question": "What is the one-time hardware stipend for newly joined engineers?",
-    "expected_sources": ["company_employee_handbook.md"],
+    "expected_sources": [
+      "company_employee_handbook.md"
+    ],
     "expected_section": "Equipment Stipend and Home Office",
     "category": "technical_numeric",
     "difficulty": "easy",
@@ -263,10 +321,290 @@
   {
     "id": 30,
     "question": "What is the minimum unit test coverage required before merging code into main?",
-    "expected_sources": ["company_employee_handbook.md"],
+    "expected_sources": [
+      "company_employee_handbook.md"
+    ],
     "expected_section": "Engineering Standards and Code Reviews",
     "category": "technical_numeric",
     "difficulty": "easy",
     "ground_truth": "Unit test coverage for new backend services must meet or exceed 80%."
+  },
+  {
+    "id": 31,
+    "question": "How long can someone stay signed in before they have to log in again?",
+    "expected_sources": [
+      "security_and_auth_policy.md"
+    ],
+    "expected_section": "Authentication Protocol",
+    "category": "semantic_paraphrase",
+    "difficulty": "hard",
+    "ground_truth": "Tokens expire after 168 hours (7 days)."
+  },
+  {
+    "id": 32,
+    "question": "How many days off per year does a full-time person get, apart from being ill?",
+    "expected_sources": [
+      "company_employee_handbook.md"
+    ],
+    "expected_section": "Paid Time Off (PTO) and Leaves",
+    "category": "semantic_paraphrase",
+    "difficulty": "hard",
+    "ground_truth": "25 days of paid time off."
+  },
+  {
+    "id": 33,
+    "question": "What happens to partially uploaded files if the server dies during processing?",
+    "expected_sources": [
+      "data_ingestion_pipeline.md"
+    ],
+    "expected_section": "Checkpointing and Failure Recovery",
+    "category": "semantic_paraphrase",
+    "difficulty": "hard",
+    "ground_truth": "Processing resumes at the recorded batch offset."
+  },
+  {
+    "id": 34,
+    "question": "Why does the system avoid paying twice for vectorising text it has already seen?",
+    "expected_sources": [
+      "data_ingestion_pipeline.md"
+    ],
+    "expected_section": "Deterministic Point ID Generation",
+    "category": "semantic_paraphrase",
+    "difficulty": "hard",
+    "ground_truth": "Existing deterministic point IDs are skipped before embedding."
+  },
+  {
+    "id": 35,
+    "question": "How much memory does the free hosting plan give the API server?",
+    "expected_sources": [
+      "deployment_and_devops.md"
+    ],
+    "expected_section": "Resource Constraints and Scaling",
+    "category": "semantic_paraphrase",
+    "difficulty": "hard",
+    "ground_truth": "512 MB RAM and 0.1 CPU cores."
+  },
+  {
+    "id": 36,
+    "question": "Which team members may see usage statistics and user management screens?",
+    "expected_sources": [
+      "security_and_auth_policy.md"
+    ],
+    "expected_section": "Role-Based Access Control (RBAC)",
+    "category": "semantic_paraphrase",
+    "difficulty": "hard",
+    "ground_truth": "Administrators only."
+  },
+  {
+    "id": 37,
+    "question": "How does the app guarantee my files are invisible to other customers when searching?",
+    "expected_sources": [
+      "security_and_auth_policy.md"
+    ],
+    "expected_section": "Document Data Isolation",
+    "category": "semantic_paraphrase",
+    "difficulty": "hard",
+    "ground_truth": "Qdrant match filters on document_id/user_id are applied before ANN."
+  },
+  {
+    "id": 38,
+    "question": "What do we do to stop several simultaneous retries from hammering the AI vendor at once?",
+    "expected_sources": [
+      "embedding_and_chunking_spec.md"
+    ],
+    "expected_section": "Resilient API Call Retries and Batching",
+    "category": "semantic_paraphrase",
+    "difficulty": "hard",
+    "ground_truth": "Decorrelated full jitter on retry intervals."
+  },
+  {
+    "id": 39,
+    "question": "How big is a single piece of text before it is forced to be cut up?",
+    "expected_sources": [
+      "embedding_and_chunking_spec.md"
+    ],
+    "expected_section": "Adaptive Semantic Chunker",
+    "category": "semantic_paraphrase",
+    "difficulty": "hard",
+    "ground_truth": "MAX_CHUNK_SIZE is 2000 characters."
+  },
+  {
+    "id": 40,
+    "question": "What does the company give a new hire to buy a computer?",
+    "expected_sources": [
+      "company_employee_handbook.md"
+    ],
+    "expected_section": "Equipment Stipend and Home Office",
+    "category": "semantic_paraphrase",
+    "difficulty": "hard",
+    "ground_truth": "A $2,500 one-time hardware budget."
+  },
+  {
+    "id": 41,
+    "question": "What happens when it is rate limited?",
+    "expected_sources": [
+      "architecture_overview.md"
+    ],
+    "expected_section": "LLM Fallback Architecture",
+    "category": "follow_up",
+    "difficulty": "medium",
+    "ground_truth": "It cascades to llama-3.1-8b-instant, mixtral-8x7b-32768, then gemma2-9b-it.",
+    "history": [
+      {
+        "role": "user",
+        "content": "What model is the primary LLM?"
+      },
+      {
+        "role": "assistant",
+        "content": "It is llama-3.3-70b-versatile on Groq."
+      }
+    ]
+  },
+  {
+    "id": 42,
+    "question": "And who is allowed to see the admin endpoints?",
+    "expected_sources": [
+      "security_and_auth_policy.md"
+    ],
+    "expected_section": "Role-Based Access Control (RBAC)",
+    "category": "follow_up",
+    "difficulty": "medium",
+    "ground_truth": "Administrators only.",
+    "history": [
+      {
+        "role": "user",
+        "content": "How long do access tokens last?"
+      },
+      {
+        "role": "assistant",
+        "content": "They expire after 168 hours."
+      }
+    ]
+  },
+  {
+    "id": 43,
+    "question": "What task type is used when searching with it?",
+    "expected_sources": [
+      "embedding_and_chunking_spec.md"
+    ],
+    "expected_section": "Embedding Model Configuration",
+    "category": "follow_up",
+    "difficulty": "medium",
+    "ground_truth": "RETRIEVAL_QUERY.",
+    "history": [
+      {
+        "role": "user",
+        "content": "Which embedding model do we use?"
+      },
+      {
+        "role": "assistant",
+        "content": "models/gemini-embedding-001."
+      }
+    ]
+  },
+  {
+    "id": 44,
+    "question": "What about parental leave?",
+    "expected_sources": [
+      "company_employee_handbook.md"
+    ],
+    "expected_section": "Paid Time Off (PTO) and Leaves",
+    "category": "follow_up",
+    "difficulty": "medium",
+    "ground_truth": "16 weeks fully paid.",
+    "history": [
+      {
+        "role": "user",
+        "content": "How many vacation days do employees get?"
+      },
+      {
+        "role": "assistant",
+        "content": "25 days per year."
+      }
+    ]
+  },
+  {
+    "id": 45,
+    "question": "What about the frontend?",
+    "expected_sources": [
+      "deployment_and_devops.md"
+    ],
+    "expected_section": "Infrastructure Architecture",
+    "category": "follow_up",
+    "difficulty": "medium",
+    "ground_truth": "On Vercel.",
+    "history": [
+      {
+        "role": "user",
+        "content": "Where is the backend hosted?"
+      },
+      {
+        "role": "assistant",
+        "content": "On Render as a Dockerized service."
+      }
+    ]
+  },
+  {
+    "id": 46,
+    "question": "Why is that done?",
+    "expected_sources": [
+      "data_ingestion_pipeline.md"
+    ],
+    "expected_section": "Deterministic Point ID Generation",
+    "category": "follow_up",
+    "difficulty": "medium",
+    "ground_truth": "For idempotency across repeated uploads.",
+    "history": [
+      {
+        "role": "user",
+        "content": "How does ingestion generate point IDs?"
+      },
+      {
+        "role": "assistant",
+        "content": "With a deterministic UUIDv5."
+      }
+    ]
+  },
+  {
+    "id": 47,
+    "question": "Why is there overlap between them?",
+    "expected_sources": [
+      "embedding_and_chunking_spec.md"
+    ],
+    "expected_section": "Adaptive Semantic Chunker",
+    "category": "follow_up",
+    "difficulty": "medium",
+    "ground_truth": "To preserve cross-boundary semantics.",
+    "history": [
+      {
+        "role": "user",
+        "content": "What are the chunk size settings?"
+      },
+      {
+        "role": "assistant",
+        "content": "Min 500, max 2000, overlap 200."
+      }
+    ]
+  },
+  {
+    "id": 48,
+    "question": "And for other authenticated routes?",
+    "expected_sources": [
+      "security_and_auth_policy.md"
+    ],
+    "expected_section": "Reverse Proxy and IP Rate Limiting",
+    "category": "follow_up",
+    "difficulty": "medium",
+    "ground_truth": "60 requests per minute per IP.",
+    "history": [
+      {
+        "role": "user",
+        "content": "What is the limit on login attempts?"
+      },
+      {
+        "role": "assistant",
+        "content": "10 per minute per IP."
+      }
+    ]
   }
 ]
