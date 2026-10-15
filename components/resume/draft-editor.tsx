@@ -141,7 +141,7 @@ function BulletRow({ text, info, canUp, canDown, onChange, onRemove, onMove, sug
   };
 
   return (
-    <li className="rounded-lg border bg-background/60 p-2.5">
+    <li className="rounded-lg border bg-background/60 p-2">
       <div className="flex items-start gap-2">
         <Textarea
           value={text}
@@ -149,11 +149,11 @@ function BulletRow({ text, info, canUp, canDown, onChange, onRemove, onMove, sug
           onChange={(e) => onChange(e.target.value)}
           // Grows with its text so a whole bullet is readable on a phone (rows is the fallback where
           // field-sizing isn't supported)
-          rows={Math.min(8, Math.max(2, Math.ceil(text.length / 70)))}
-          className="min-h-[56px] flex-1 resize-y text-sm [field-sizing:content]"
+          rows={Math.min(8, Math.max(1, Math.ceil(text.length / 90)))}
+          className="min-h-9 flex-1 resize-y py-1.5 text-sm [field-sizing:content]"
           aria-label="Bullet text"
         />
-        <div className="flex shrink-0 flex-col">
+        <div className="flex shrink-0 items-center">
           <Button size="icon" variant="ghost" className="size-7" disabled={!canUp} onClick={() => onMove(-1)} aria-label="Move bullet up">
             <ArrowUp className="size-3.5" />
           </Button>
@@ -660,15 +660,7 @@ export function DraftEditor({ generationId, onChanged, focusOutreach }: DraftEdi
       )}
 
       {/* Layout */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Layout</CardTitle>
-          <CardDescription>All layouts are single column and plain text. Re-score to apply a change.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <LayoutOptions value={options} onChange={setOptions} disabled={scoring} />
-        </CardContent>
-      </Card>
+      <LayoutOptions value={options} onChange={setOptions} disabled={scoring} hint="Single column, plain text. Re-score to apply a change." />
 
       {/* Summary and skills */}
       <Card>

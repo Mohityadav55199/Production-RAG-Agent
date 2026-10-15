@@ -86,7 +86,7 @@ export function HistoryPanel({ refreshKey, onOpen }: { refreshKey: number; onOpe
               <div
                 className={cn(
                   "flex size-11 shrink-0 items-center justify-center rounded-lg text-sm font-bold tabular-nums",
-                  g.released ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  g.ats_score >= g.threshold ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                 )}
               >
                 {g.ats_score}
@@ -100,11 +100,19 @@ export function HistoryPanel({ refreshKey, onOpen }: { refreshKey: number; onOpe
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {!g.released && (
+              {/* Not released means below the target score, or no PDF (the LaTeX is still there) */}
+              {g.ats_score < g.threshold ? (
                 <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
                   <AlertTriangle className="size-3.5" />
                   Below {g.threshold}
                 </span>
+              ) : (
+                !g.pdf_available && (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground" title="The server couldn't compile a PDF; download the LaTeX and compile it in Overleaf.">
+                    <AlertTriangle className="size-3.5" />
+                    No PDF
+                  </span>
+                )
               )}
               <Button size="sm" variant="outline" onClick={() => onOpen(g.id)}>
                 <Pencil className="size-3.5" />

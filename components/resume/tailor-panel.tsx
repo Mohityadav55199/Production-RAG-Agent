@@ -242,10 +242,7 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }
             </p>
           </div>
 
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Layout</p>
-            <LayoutOptions value={layout} onChange={setLayout} disabled={running} />
-          </div>
+          <LayoutOptions value={layout} onChange={setLayout} disabled={running} />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1 space-y-1.5">

@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { Select } from "@/components/ui/select";
 
 const STATUS_CONFIG: Record<
   JobStatus,
@@ -71,6 +72,10 @@ const STATUS_CONFIG: Record<
 interface JobTrackerProps {
   onOpenOutreach?: (job: JobApplication) => void;
 }
+
+
+const STATUS_OPTIONS = (Object.keys(STATUS_CONFIG) as JobStatus[]).map((value) => ({ value, label: STATUS_CONFIG[value].label }));
+const FILTER_OPTIONS = [{ value: "all", label: "All statuses" }, ...STATUS_OPTIONS];
 
 export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
   const { confirm, dialog } = useConfirm();
@@ -216,36 +221,19 @@ export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner / Summary Stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
-          <div className="text-xs font-medium text-muted-foreground">Total Tracked</div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-bold">{stats.total}</span>
-            <span className="text-xs text-muted-foreground">opportunities</span>
-          </div>
-        </div>
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
-          <div className="text-xs font-medium text-muted-foreground">Active Pipelines</div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-primary">{stats.active}</span>
-            <span className="text-xs text-muted-foreground">in progress</span>
-          </div>
-        </div>
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
-          <div className="text-xs font-medium text-muted-foreground">Interviews</div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-amber-500">{stats.interviewing}</span>
-            <span className="text-xs text-muted-foreground">active</span>
-          </div>
-        </div>
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
-          <div className="text-xs font-medium text-muted-foreground">Offers</div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-emerald-500">{stats.offers}</span>
-            <span className="text-xs text-emerald-500/80">received</span>
-          </div>
-        </div>
+      {/* Summary: one slim row */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-xl border bg-card px-4 py-2.5 text-sm">
+        {[
+          { label: "tracked", value: stats.total, color: "" },
+          { label: "in progress", value: stats.active, color: "text-primary" },
+          { label: "interviewing", value: stats.interviewing, color: "text-amber-600 dark:text-amber-400" },
+          { label: stats.offers === 1 ? "offer" : "offers", value: stats.offers, color: "text-emerald-600 dark:text-emerald-400" },
+        ].map((s) => (
+          <span key={s.label} className="flex items-baseline gap-1.5">
+            <strong className={cn("text-lg font-semibold tabular-nums", s.color)}>{s.value}</strong>
+            <span className="text-muted-foreground">{s.label}</span>
+          </span>
+        ))}
       </div>
 
       {/* Control Bar */}
@@ -263,19 +251,7 @@ export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
           </div>
           <div className="flex items-center gap-1.5">
             <Filter className="h-4 w-4 text-muted-foreground" />
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="h-9 rounded-lg border bg-background px-2 text-xs font-medium"
-            >
-              <option value="all">All statuses</option>
-              <option value="saved">Saved</option>
-              <option value="applied">Applied</option>
-              <option value="interviewing">Interviewing</option>
-              <option value="offered">Offered</option>
-              <option value="rejected">Rejected</option>
-              <option value="archived">Archived</option>
-            </select>
+            <Select label="Filter by status" className="w-36" value={filterStatus} options={FILTER_OPTIONS} onChange={setFilterStatus} />
           </div>
         </div>
 
@@ -343,23 +319,15 @@ export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
                       </div>
                     </div>
 
-                    <select
+                    <Select
+                      label="Status"
+                      size="sm"
+                      className="shrink-0"
                       value={job.status}
-                      onChange={(e) => handleStatusChange(job.id, e.target.value as JobStatus)}
-                      className={cn(
-                        "rounded-full border px-2.5 py-0.5 text-xs font-semibold focus:outline-none transition-colors",
-                        statusMeta.bg,
-                        statusMeta.text,
-                        statusMeta.border
-                      )}
-                    >
-                      <option value="saved">Saved</option>
-                      <option value="applied">Applied</option>
-                      <option value="interviewing">Interviewing</option>
-                      <option value="offered">Offered</option>
-                      <option value="rejected">Rejected</option>
-                      <option value="archived">Archived</option>
-                    </select>
+                      options={STATUS_OPTIONS}
+                      onChange={(next) => handleStatusChange(job.id, next)}
+                      buttonClassName={cn("rounded-full font-semibold", statusMeta.bg, statusMeta.text, statusMeta.border)}
+                    />
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-y-1 gap-x-3 text-xs text-muted-foreground">
@@ -480,21 +448,10 @@ export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                  <span className="block text-xs font-medium text-muted-foreground mb-1">
                     Status
-                  </label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as JobStatus)}
-                    className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="saved">Saved</option>
-                    <option value="applied">Applied</option>
-                    <option value="interviewing">Interviewing</option>
-                    <option value="offered">Offered</option>
-                    <option value="rejected">Rejected</option>
-                    <option value="archived">Archived</option>
-                  </select>
+                  </span>
+                  <Select label="Status" className="w-full" value={status} options={STATUS_OPTIONS} onChange={setStatus} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">

@@ -202,10 +202,16 @@ export function LibraryPanel({ resumes, loading, onChanged }: LibraryPanelProps)
                   {r.counts.skills} skills
                 </p>
                 <p className="mt-1.5 flex items-center gap-1.5 text-xs">
-                  {r.index_status === "ready" && (
+                  {r.index_status === "ready" && r.item_count > 0 && (
                     <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="size-3" />
                       Searchable ({r.item_count} items)
+                    </span>
+                  )}
+                  {r.index_status === "ready" && r.item_count === 0 && (
+                    <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                      <TriangleAlert className="size-3" />
+                      Nothing searchable was found in this resume. Try uploading it again.
                     </span>
                   )}
                   {r.index_status === "pending" && (
