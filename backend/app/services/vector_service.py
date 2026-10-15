@@ -63,6 +63,7 @@ async def ensure_collection() -> None:
 
     if collection_name in names:
         logger.debug("Qdrant collection '%s' already exists", collection_name)
+        await _ensure_text_index(client, collection_name)   # collections created before hybrid search
         return
 
     await client.create_collection(
@@ -86,11 +87,35 @@ async def ensure_collection() -> None:
         field_schema=qmodels.PayloadSchemaType.KEYWORD,
     )
 
+    await _ensure_text_index(client, collection_name)
+
     logger.info(
         "Created Qdrant collection '%s' (dim=%d, distance=COSINE)",
         collection_name,
         settings.EMBEDDING_DIMENSION,
     )
+
+
+async def _ensure_text_index(client, collection_name: str) -> None:
+    """Full-text index on the chunk text, used by hybrid search's exact-term leg. Safe to repeat."""
+    import warnings
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")   # local (embedded) Qdrant ignores payload indexes and says so
+            await client.create_payload_index(
+                collection_name=collection_name,
+                field_name="text",
+                field_schema=qmodels.TextIndexParams(
+                    type=qmodels.TextIndexType.TEXT,
+                    tokenizer=qmodels.TokenizerType.WORD,
+                    lowercase=True,
+                    min_token_len=2,
+                    max_token_len=40,
+                ),
+            )
+    except Exception as exc:  # noqa: BLE001 - search still works without it, only slower for exact terms
+        logger.warning("Could not create the full-text index on '%s': %s", collection_name, exc)
 
 
 async def upsert_vectors(points: list[VectorPoint]) -> int:

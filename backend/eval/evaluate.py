@@ -296,11 +296,13 @@ class LiveBenchmarkIndex:
 
     COLLECTION = "rag_eval"
 
-    def __init__(self, corpus_dir: Path, condense: bool = False, rebuild: bool = False, rerank: bool = False):
+    def __init__(self, corpus_dir: Path, condense: bool = False, rebuild: bool = False, rerank: bool = False,
+                 hybrid: bool = False):
         self.corpus_dir = corpus_dir
         self.condense = condense
         self.rebuild = rebuild
         self.rerank = rerank
+        self.hybrid = hybrid
         self.chunks: list[dict[str, Any]] = []
         self._client = None
         self._ready = False
@@ -364,6 +366,12 @@ class LiveBenchmarkIndex:
         candidate_limit = max(top_k * 3, 15) if self.rerank else top_k
         points = (await self._client.query_points(
             self.COLLECTION, query=vector, limit=candidate_limit, with_payload=True)).points
+        if self.hybrid:   # the production exact-term leg (retrieval_service.keyword_candidates)
+            from app.services.retrieval_service import keyword_candidates
+
+            seen = {str(p.id) for p in points}
+            extra = await keyword_candidates(self._client, self.COLLECTION, query, vector, None)
+            points = sorted([*points, *[p for p in extra if str(p.id) not in seen]], key=lambda p: p.score, reverse=True)
         hits = [p for p in points if p.score >= min_score]
         if hits and not self.rerank and max_gap is not None and max_gap >= 0.0:
             hits = [p for p in hits if p.score >= hits[0].score - max_gap]
@@ -706,6 +714,7 @@ def main():
                         help="With --live: rewrite follow-up questions into standalone queries before searching.")
     parser.add_argument("--rebuild", action="store_true", help="With --live: re-embed the corpus even if already indexed.")
     parser.add_argument("--rerank", action="store_true", help="Enable second-stage flash cross-encoder reranker.")
+    parser.add_argument("--hybrid", action="store_true", help="With --live: add the exact-term (keyword) search leg.")
     parser.add_argument("--json-out", type=Path, default=None, help="Save evaluation summary to JSON file.")
 
     args = parser.parse_args()
@@ -731,12 +740,14 @@ def main():
 
     if args.live:
         print("Running live evaluation against Gemini embeddings + a private Qdrant store ...")
-        live = LiveBenchmarkIndex(args.corpus, condense=args.condense, rebuild=args.rebuild, rerank=args.rerank)
+        live = LiveBenchmarkIndex(args.corpus, condense=args.condense, rebuild=args.rebuild, rerank=args.rerank,
+                                  hybrid=args.hybrid)
         search_fn = live.search_sync
         mode_label = (
             "Live Gemini + Qdrant"
             + (" + question condensing" if args.condense else "")
             + (" + reranking" if args.rerank else "")
+            + (" + hybrid" if args.hybrid else "")
         )
     else:
         index = LocalBenchmarkIndex(args.corpus, rerank=args.rerank)

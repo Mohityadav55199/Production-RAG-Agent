@@ -156,6 +156,74 @@ def flash_rerank_chunks(
     return reranked[:top_k]
 
 
+# ── Hybrid search: an exact-term leg next to the vector search ──────────────
+# Embeddings are weak at exact identifiers (MAX_CHUNK_SIZE, gpt-oss-120b, HTTP 429, v2.3.1): a chunk that
+# contains one can rank below the vector search's cut-off. For questions with such terms, chunks containing
+# them are fetched through Qdrant's full-text index, scored by their real cosine similarity to the question,
+# and added to the candidates; the score floor, reranker and gap filter then treat them like any other.
+
+_TERM_RE = re.compile(r'"([^"]{3,60})"|([A-Za-z0-9][\w.\-/]*[A-Za-z0-9]|[A-Za-z0-9]{2,})')
+_MAX_TERMS = 4
+_PER_TERM_LIMIT = 20
+
+
+def specific_terms(query: str) -> list[str]:
+    """Identifier-like terms worth an exact search: quoted phrases, and tokens with digits, underscores,
+    dots, hyphens or slashes inside, or capitals after the first letter (camelCase, ACRONYMS)."""
+    terms: list[str] = []
+    for quoted, token in _TERM_RE.findall(query):
+        if quoted:
+            terms.append(quoted.strip())
+            continue
+        t = token
+        if t.lower() in _STOPWORDS:
+            continue
+        specific = (
+            any(ch.isdigit() for ch in t)
+            or any(ch in "_./-" for ch in t[1:-1])
+            or (len(t) >= 2 and any(ch.isupper() for ch in t[1:]))
+        )
+        if specific and len(t) >= 2:
+            terms.append(t)
+    return list(dict.fromkeys(terms))[:_MAX_TERMS]
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
+
+
+async def keyword_candidates(
+    client, collection: str, query: str, query_vector: list[float], base_filter: "qmodels.Filter | None",
+) -> list["qmodels.ScoredPoint"]:
+    """Chunks containing the question's exact identifiers, scored by cosine similarity to the question."""
+    found: dict[str, qmodels.ScoredPoint] = {}
+    for term in specific_terms(query):
+        conditions = list(base_filter.must or []) if base_filter else []
+        conditions.append(qmodels.FieldCondition(key="text", match=qmodels.MatchText(text=term)))
+        try:
+            points, _ = await client.scroll(
+                collection_name=collection,
+                scroll_filter=qmodels.Filter(must=conditions),
+                limit=_PER_TERM_LIMIT,
+                with_payload=True,
+                with_vectors=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - the vector search alone still answers
+            logger.warning("Keyword search for %r failed: %s", term, exc)
+            continue
+        for p in points:
+            vector = p.vector if isinstance(p.vector, list) else None
+            if vector is None or str(p.id) in found:
+                continue
+            found[str(p.id)] = qmodels.ScoredPoint(
+                id=p.id, version=0, score=_cosine(query_vector, vector), payload=p.payload, vector=None,
+            )
+    return list(found.values())
+
+
 _QUERY_CACHE_SIZE = 256
 _query_vectors: "OrderedDict[str, list[float]]" = OrderedDict()
 
@@ -241,6 +309,17 @@ async def retrieve_chunks(
             with_payload=True,
             query_filter=query_filter,
         )
+
+    # Hybrid: add chunks that contain the question's exact identifiers but missed the vector cut-off
+    if settings.HYBRID_SEARCH_ENABLED:
+        seen = {str(h.id) for h in search_results}
+        extra = [
+            p for p in await keyword_candidates(client, coll, query, query_vector, query_filter)
+            if str(p.id) not in seen
+        ]
+        if extra:
+            logger.debug("Hybrid search added %d exact-term candidate(s)", len(extra))
+            search_results = list(search_results) + extra
 
     # Log all raw candidate scores before filtering
     if search_results:

@@ -6,18 +6,25 @@ Evaluates 10 candidates against 10 job descriptions:
    invented number and an invented project planted in it, and none may survive ground_profile.
 2. The guard leaves honest drafts alone: a draft that only uses library facts must come back unchanged.
 3. Scores point the right way: the candidate a job was written for ranks first among all ten.
-4. (--live) Cover letters and recruiter messages are generated and checked for unsupported claims.
+4. (--live) Every candidate is tailored by the real pipeline with the live model; each final draft is checked
+   for claims the library does not support, and its ATS score, attempts and time are reported. Outreach is
+   generated for one candidate. --provider / --model pin the model (fallbacks off) to compare providers.
 
 Usage:
     python backend/eval/resume_eval/evaluate_resume.py
     python backend/eval/resume_eval/evaluate_resume.py --live
+    python backend/eval/resume_eval/evaluate_resume.py --live --provider groq --model openai/gpt-oss-120b
+    python backend/eval/resume_eval/evaluate_resume.py --live --provider gemini --model gemini-2.5-flash --limit 5
 """
 
 import argparse
 import asyncio
 import json
 import sys
+import time
+import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 # Add backend root to sys.path so app imports resolve
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -92,7 +99,47 @@ def rank_of_target(job: dict, resumes_by_id: dict[str, dict]) -> tuple[int, int,
     return target, best_other, rank
 
 
-async def run_benchmark(live_mode: bool = False) -> int:
+async def live_tailoring(resumes_by_id: dict[str, dict], jobs: list[dict]) -> int:
+    """Tailor each job's target candidate with the live model; report score, time and unsupported claims."""
+    from app.config import get_settings
+    from app.services.resume.agents import run_tailoring
+
+    threshold = get_settings().RESUME_ATS_THRESHOLD
+    print(f"\n{'Candidate':<18} | {'Score':>5} | {'Tries':>5} | {'Seconds':>7} | Unsupported claims in the final draft")
+    print("-" * 96)
+    total_claims = failures = 0
+    scores: list[int] = []
+    for job in jobs:
+        res = resumes_by_id[job["target_resume_id"]]
+        profile = Profile.model_validate(res)
+        corpus = profile_plain_text(profile)
+        row = SimpleNamespace(id=uuid.uuid4(), profile=profile.model_dump(), raw_text=corpus)
+        started = time.perf_counter()
+        final = None
+        try:
+            async for event in run_tailoring(job["text"], [row], threshold):
+                if event.get("type") == "final":
+                    final = event["state"]
+                elif event.get("type") == "error":
+                    raise RuntimeError(event.get("message"))
+        except Exception as exc:  # noqa: BLE001
+            failures += 1
+            print(f"{res['name']:<18} | {'–':>5} | {'–':>5} | {time.perf_counter() - started:>7.1f} | FAILED: {exc}")
+            continue
+        best = final["best"]
+        draft = Profile.model_validate(best["draft"])
+        claims = grounding.unsupported_claims(profile_plain_text(draft), corpus, JDAnalysis.model_validate(final["jd"]))
+        total_claims += len(claims)
+        scores.append(int(best["score"]))
+        print(f"{res['name']:<18} | {int(best['score']):>4}% | {final.get('attempt', 1):>5} | "
+              f"{time.perf_counter() - started:>7.1f} | {', '.join(claims) or 'none'}")
+    if scores:
+        print(f"\n  Average score {sum(scores) / len(scores):.1f}; {sum(s >= threshold for s in scores)}/{len(scores)} "
+              f"reached the {threshold} target; unsupported claims: {total_claims}; failed runs: {failures}")
+    return 0 if total_claims == 0 and failures == 0 else 1
+
+
+async def run_benchmark(live_mode: bool = False, limit: int | None = None) -> int:
     resumes_data, jobs_data = load_dataset()
     resumes_by_id = {r["id"]: r for r in resumes_data}
     print("=" * 96)
@@ -119,8 +166,11 @@ async def run_benchmark(live_mode: bool = False) -> int:
             print(f"    leaked: {item}")
 
     print("\n" + "-" * 96)
+    live_status = 0
     if live_mode:
-        print("Generating outreach with the live LLM...")
+        print("Tailoring every candidate with the live LLM...")
+        live_status = await live_tailoring(resumes_by_id, jobs_data[:limit] if limit else jobs_data)
+        print("\nGenerating outreach with the live LLM...")
         sample = Profile.model_validate(resumes_by_id[jobs_data[0]["target_resume_id"]])
         corpus = profile_plain_text(sample)
         jd = job_analysis(jobs_data[0])
@@ -147,7 +197,7 @@ async def run_benchmark(live_mode: bool = False) -> int:
     print(f"  * Right candidate ranked first          : {rank_one}/{n}")
     print("=" * 96)
 
-    if total_leaked == 0 and total_reverts == 0 and rank_one == n:
+    if total_leaked == 0 and total_reverts == 0 and rank_one == n and live_status == 0:
         print("\nAll benchmark criteria passed successfully!\n")
         return 0
     print("\nNotice: Some benchmark criteria need attention.\n")
@@ -156,7 +206,21 @@ async def run_benchmark(live_mode: bool = False) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate resume grounding and scoring suite.")
-    parser.add_argument("--live", action="store_true", help="Also generate outreach with the live LLM.")
+    parser.add_argument("--live", action="store_true", help="Also tailor every candidate and write outreach with the live LLM.")
+    parser.add_argument("--provider", choices=["groq", "gemini"], help="With --live: use only this provider (no fallbacks).")
+    parser.add_argument("--model", help="With --live: the model to use, e.g. openai/gpt-oss-120b or gemini-2.5-flash.")
+    parser.add_argument("--limit", type=int, help="With --live: tailor only the first N jobs (saves quota).")
     args = parser.parse_args()
 
-    sys.exit(asyncio.run(run_benchmark(live_mode=args.live)))
+    if args.provider or args.model:
+        from app.config import get_settings
+
+        s = get_settings()
+        if args.provider:
+            s.PRIMARY_LLM_PROVIDER = args.provider
+        if args.model:
+            s.PRIMARY_LLM_MODEL = args.model
+        s.ENABLE_LLM_FALLBACK = False   # measure this model alone
+        print(f"Pinned model: {s.PRIMARY_LLM_PROVIDER}:{s.PRIMARY_LLM_MODEL} (fallbacks off)")
+
+    sys.exit(asyncio.run(run_benchmark(live_mode=args.live, limit=args.limit)))

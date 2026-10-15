@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     MAX_HISTORY_PAIRS: int = 3             # conversation turns kept in context window
     RERANKING_ENABLED: bool = True           # second-stage flash cross-encoder reranker
     RERANKING_CANDIDATE_FACTOR: int = 3      # candidate oversampling factor for reranking
+    HYBRID_SEARCH_ENABLED: bool = True       # also fetch chunks containing exact identifiers/codes from the question
 
     # ── Embedding Resiliency ──────────────────────────────────────────────────
     MAX_EMBED_RETRIES: int = 5
