@@ -27,7 +27,7 @@ jobs:
       # The database name must contain "test": the suite wipes the schema at the start
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:pw@localhost:5432/ragtest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -52,7 +52,7 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
