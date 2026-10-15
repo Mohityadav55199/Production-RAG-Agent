@@ -17,6 +17,7 @@ from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.admin import router as admin_router
+from app.api.feedback import admin_router as admin_feedback_router, router as feedback_router
 from app.api.assets import router as assets_router
 from app.api.auth import router as auth_router
 from app.api.collections import router as collections_router
@@ -34,6 +35,7 @@ from app.db import conversation_models  # noqa: F401 — registers Phase 4 table
 from app.db import resume_models  # noqa: F401 — registers resume tables
 from app.db import auth_models  # noqa: F401 — registers the users table
 from app.db import asset_models  # noqa: F401 — registers the document_assets table
+from app.db import feedback_models  # noqa: F401 — registers the answer_feedback table
 from app.db.postgres import dispose_engine, get_engine
 from app.db.postgres import Base
 from app.db.qdrant import close_qdrant_client
@@ -149,8 +151,10 @@ def create_app() -> FastAPI:
     app.include_router(resume_router, dependencies=protected)                # /resume/*
     app.include_router(compare_router, dependencies=protected)               # POST /compare (SSE)
     app.include_router(query_router, dependencies=protected)                 # POST /query (SSE)
+    app.include_router(feedback_router, dependencies=protected)              # POST /feedback
     # Administrator tools: network check, and the Qdrant collection API (it acts on the shared index)
     app.include_router(admin_router, dependencies=[Depends(require_admin)])
+    app.include_router(admin_feedback_router, dependencies=[Depends(require_admin)])   # GET /admin/feedback
     # The Qdrant collection admin API acts on the shared index, so it is admin-only
     app.include_router(collections_router, dependencies=[Depends(require_admin)])
 

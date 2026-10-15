@@ -58,6 +58,8 @@ export interface ChatMessage {
   attachments?: { id: string; name: string; previewUrl: string }[];
   isStreaming?: boolean;
   error?: string;
+  /** The user's thumbs up/down on this answer. */
+  rating?: "up" | "down";
 }
 
 

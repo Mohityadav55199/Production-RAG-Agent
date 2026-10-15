@@ -12,6 +12,8 @@ import {
   RotateCcw,
   Send,
   Square,
+  ThumbsDown,
+  ThumbsUp,
   User,
   X,
 } from "lucide-react";
@@ -23,6 +25,7 @@ import {
   releaseImages,
   type AttachedImage,
 } from "@/lib/api/images";
+import { submitFeedback, type AnswerRating } from "@/lib/api/feedback";
 import { streamQuery, type AnswerStyle } from "@/lib/api/query";
 import { parseSourceKey } from "@/lib/api/sources";
 import { SourceSelect, useKnowledgeSources } from "@/components/chat/source-select";
@@ -261,6 +264,27 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
     [activeCollectionId, isStreaming, preparing, attachments, defaultImageQuestion, scope, answerStyle, conversationId, mode]
   );
 
+  const rateAnswer = async (message: ChatMessage, rating: AnswerRating) => {
+    if (message.rating === rating) return;
+    const index = messages.findIndex((m) => m.id === message.id);
+    const question = [...messages.slice(0, index)].reverse().find((m) => m.role === "user")?.content;
+    if (!question) return;
+    setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, rating } : m)));
+    try {
+      await submitFeedback({
+        rating,
+        question,
+        answer: message.content,
+        conversationId: conversationId,
+        citedFiles: [...new Set((message.sources ?? []).map((s) => s.documentName).filter(Boolean))] as string[],
+      });
+      toast.success("Thanks for the feedback");
+    } catch (err) {
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, rating: undefined } : m)));
+      toast.error(err instanceof Error ? err.message : "Could not send feedback");
+    }
+  };
+
   const stopGeneration = () => {
     abortRef.current?.abort();
     setIsStreaming(false);
@@ -451,6 +475,31 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                           )}
                           {message.content}
                         </>
+                      )}
+
+                      {message.role === "assistant" && !message.isStreaming && !message.error && message.content && (
+                        <div className="mt-2 flex items-center gap-1">
+                          {(["up", "down"] as const).map((value) => (
+                            <Button
+                              key={value}
+                              variant="ghost"
+                              size="icon"
+                              aria-label={value === "up" ? "Good answer" : "Bad answer"}
+                              aria-pressed={message.rating === value}
+                              className={cn(
+                                "size-6 text-muted-foreground hover:text-foreground",
+                                message.rating === value && "text-foreground"
+                              )}
+                              onClick={() => rateAnswer(message, value)}
+                            >
+                              {value === "up" ? (
+                                <ThumbsUp className={cn("size-3", message.rating === value && "fill-current")} />
+                              ) : (
+                                <ThumbsDown className={cn("size-3", message.rating === value && "fill-current")} />
+                              )}
+                            </Button>
+                          ))}
+                        </div>
                       )}
 
                       {message.error && (
