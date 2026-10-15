@@ -390,7 +390,7 @@ export function JobTracker({ onOpenOutreach }: JobTrackerProps) {
 
                   {job.notes && (
                     <p className="mt-2.5 line-clamp-2 text-xs text-muted-foreground italic">
-                      "{job.notes}"
+                      &ldquo;{job.notes}&rdquo;
                     </p>
                   )}
                 </div>

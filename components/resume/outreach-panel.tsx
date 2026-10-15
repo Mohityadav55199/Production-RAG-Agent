@@ -239,7 +239,7 @@ export function OutreachPanel({ generationId, company, jobTitle }: OutreachPanel
               <Send className="mx-auto h-8 w-8 text-muted-foreground/40" />
               <h4 className="mt-2 text-sm font-semibold">Generate Cold Outreach Message</h4>
               <p className="mt-1 text-xs text-muted-foreground max-w-md mx-auto">
-                Punchy, concise note (under 150 words) highlighting 2-3 genuine achievements matching the job's core challenges.
+                Punchy, concise note (under 150 words) highlighting 2-3 genuine achievements matching the job&rsquo;s core challenges.
               </p>
               <button
                 onClick={() => fetchRecruiterMsg()}
