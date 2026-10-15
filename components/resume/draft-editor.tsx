@@ -5,7 +5,9 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  BriefcaseBusiness,
   CheckCircle2,
+  Columns2,
   Download,
   FileCode2,
   Info,
@@ -20,6 +22,7 @@ import { toast } from "sonner";
 import {
   downloadGenerationFile,
   getGeneration,
+  markApplied,
   regenerateBullet,
   rescoreGeneration,
   type BulletInfo,
@@ -28,6 +31,7 @@ import {
   type RenderOptions,
   type ResumeProfile,
 } from "@/lib/api/resume";
+import { CompareView } from "@/components/resume/compare-view";
 import { LayoutOptions } from "@/components/resume/layout-options";
 import { OutreachPanel } from "@/components/resume/outreach-panel";
 import { ScoreReport, ScoreRing } from "@/components/resume/score-report";
@@ -357,6 +361,8 @@ export function DraftEditor({ generationId, onChanged, focusOutreach }: DraftEdi
   const [options, setOptions] = useState<RenderOptions | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scoring, setScoring] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [comparing, setComparing] = useState(false);
   const [version, setVersion] = useState(0); // bumps on every server update, so the outreach panel reloads
   const outreachRef = useRef<HTMLDivElement>(null);
 
@@ -455,6 +461,19 @@ export function DraftEditor({ generationId, onChanged, focusOutreach }: DraftEdi
     }
   };
 
+  const markAsApplied = async () => {
+    setApplying(true);
+    try {
+      const job = await markApplied(generationId);
+      setDetail({ ...detail, job });
+      toast.success(job.status === "applied" ? "Marked as applied in your job tracker" : `Job tracker updated (${job.status})`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update the job tracker");
+    } finally {
+      setApplying(false);
+    }
+  };
+
   const download = async (kind: "pdf" | "tex") => {
     try {
       await downloadGenerationFile(generationId, kind, `${detail.output_name}.${kind}`);
@@ -520,6 +539,24 @@ export function DraftEditor({ generationId, onChanged, focusOutreach }: DraftEdi
                   {scoring ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
                   Re-score
                 </Button>
+                {detail.job && detail.job.status !== "saved" ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 text-xs font-medium capitalize text-emerald-700 dark:text-emerald-400">
+                    <BriefcaseBusiness className="size-3.5" />
+                    {detail.job.status}
+                    {detail.job.applied_date ? ` · ${new Date(detail.job.applied_date).toLocaleDateString()}` : ""}
+                  </span>
+                ) : (
+                  <Button size="sm" variant="outline" disabled={applying} onClick={markAsApplied}>
+                    {applying ? <Loader2 className="size-4 animate-spin" /> : <BriefcaseBusiness className="size-4" />}
+                    Mark as applied
+                  </Button>
+                )}
+                {detail.library && (
+                  <Button size="sm" variant={comparing ? "secondary" : "ghost"} onClick={() => setComparing((v) => !v)} aria-expanded={comparing}>
+                    <Columns2 className="size-4" />
+                    {comparing ? "Hide comparison" : "Compare with your original"}
+                  </Button>
+                )}
                 {aiDraftDiffers && (
                   <Button size="sm" variant="ghost" onClick={() => { setDraft(detail.ai_draft); }}>
                     <RotateCcw className="size-4" />
@@ -541,6 +578,21 @@ export function DraftEditor({ generationId, onChanged, focusOutreach }: DraftEdi
           </div>
         </CardHeader>
       </Card>
+
+      {/* Your library next to the tailored draft */}
+      {comparing && detail.library && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Your original next to the tailored draft</CardTitle>
+            <CardDescription>
+              Left: your resume as it is in your library. Right: this draft, including edits you haven&apos;t re-scored yet.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CompareView library={detail.library} draft={draft} annotated={annotated} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Gap report */}
       {gap && (gap.usable.length > 0 || gap.lacking_must.length > 0 || gap.lacking_nice.length > 0) && (

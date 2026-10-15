@@ -23,6 +23,8 @@ export interface AuthUser {
   id: string;
   email: string;
   is_admin?: boolean;
+  /** False until the address is confirmed, when the server requires email verification. */
+  email_verified?: boolean;
 }
 
 // A token the server issues after each successful login. Sending it back on the next login marks this
@@ -60,6 +62,8 @@ interface AuthContextValue {
   signup: (email: string, password: string) => Promise<void>;
   logout: () => void;
   retry: () => void;
+  /** Mark the signed-in user's email as confirmed (after the verification link was opened). */
+  markVerified: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -166,10 +170,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [invalidateRuns]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const markVerified = useCallback(() => setUser((u) => (u ? { ...u, email_verified: true } : u)), []);
 
   const value = useMemo(
-    () => ({ user, status, login, signup, logout, retry }),
-    [user, status, login, signup, logout, retry]
+    () => ({ user, status, login, signup, logout, retry, markVerified }),
+    [user, status, login, signup, logout, retry, markVerified]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

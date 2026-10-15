@@ -185,6 +185,16 @@ class Settings(BaseSettings):
     MAX_CHUNK_SIZE: int = 2000             # max chars before recursive split
     CHUNK_OVERLAP: int = 200               # chars shared between consecutive chunks
 
+    # ── Email verification (optional: active only when RESEND_API_KEY is set) ───
+    RESEND_API_KEY: str = ""                 # https://resend.com; empty = no emails, accounts need no verification
+    EMAIL_FROM: str = "RAG Agent <onboarding@resend.dev>"   # a sender on a domain verified in Resend
+    APP_URL: str = ""                        # frontend address for links; defaults to the first CORS origin
+    REQUIRE_EMAIL_VERIFICATION: bool = True  # with email configured, new accounts must click the link first
+
+    # ── Error tracking (optional) ───────────────────────────────────────────────
+    SENTRY_DSN: str = ""                     # empty = Sentry off
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0   # share of requests traced for performance (0-1)
+
     # ── CORS ───────────────────────────────────────────────────────────────────
     CORS_ORIGINS: list[str] = ["*"]
 

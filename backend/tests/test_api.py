@@ -503,6 +503,103 @@ class TestAdmin:
         assert client.get("/collections", headers=token).status_code == 403
 
 
+class TestEmailVerification:
+    @pytest.fixture
+    def outbox(self, monkeypatch):
+        """Email 'configured' with a fake sender that records every message."""
+        from app.config import get_settings
+        from app.services import email_verification
+
+        sent = []
+
+        async def fake_send(to, subject, text, html_body):
+            sent.append({"to": to, "text": text})
+
+        monkeypatch.setattr(get_settings(), "RESEND_API_KEY", "re_test")
+        monkeypatch.setattr(get_settings(), "APP_URL", "https://app.example.com")
+        monkeypatch.setattr(email_verification, "send_email", fake_send)
+        return sent
+
+    @staticmethod
+    def link_token(message: dict) -> str:
+        import re
+
+        return re.search(r"verify-email\?token=(\S+)", message["text"]).group(1)
+
+    def test_without_an_email_provider_new_accounts_work_at_once(self, client):
+        r = client.post("/auth/signup", json={"email": "noemail@example.com", "password": "plain password 1"})
+        assert r.json()["user"]["email_verified"] is True
+        assert client.get("/documents", headers=auth_header(r.json()["token"])).status_code == 200
+
+    def test_a_new_account_must_confirm_its_email_first(self, client, outbox):
+        r = client.post("/auth/signup", json={"email": "verify-me@example.com", "password": "verify pass 12"})
+        headers = auth_header(r.json()["token"])
+        assert r.json()["user"]["email_verified"] is False
+        assert outbox and outbox[0]["to"] == "verify-me@example.com"
+        assert "https://app.example.com/verify-email?token=" in outbox[0]["text"]
+
+        blocked = client.get("/documents", headers=headers)
+        assert blocked.status_code == 403 and "confirm your email" in blocked.json()["detail"]
+        assert client.get("/auth/me", headers=headers).json()["email_verified"] is False
+
+        token = self.link_token(outbox[0])
+        assert client.get("/documents", headers=auth_header(token)).status_code == 401   # a link is not a session
+        assert client.post("/auth/verify-email", json={"token": token}).json()["ok"] is True
+        assert client.get("/documents", headers=headers).status_code == 200
+        assert client.get("/auth/me", headers=headers).json()["email_verified"] is True
+
+    def test_resending_is_limited_and_bad_links_are_refused(self, client, outbox):
+        r = client.post("/auth/signup", json={"email": "resend@example.com", "password": "resend pass 12"})
+        headers = auth_header(r.json()["token"])
+        codes = [client.post("/auth/resend-verification", headers=headers).status_code for _ in range(4)]
+        assert codes == [200, 200, 200, 429]
+        assert client.post("/auth/verify-email", json={"token": "not-a-token"}).status_code == 400
+        session_token = r.json()["token"]
+        assert client.post("/auth/verify-email", json={"token": session_token}).status_code == 400
+
+    def test_the_admin_is_never_blocked(self, client, users, outbox):
+        run_sql("UPDATE users SET email_verified = false WHERE id = $1", uuid.UUID(users["alice_id"]))
+        try:
+            assert client.get("/documents", headers=users["alice"]).status_code == 200
+        finally:
+            run_sql("UPDATE users SET email_verified = true WHERE id = $1", uuid.UUID(users["alice_id"]))
+
+
+class TestQueryMetrics:
+    def test_each_question_records_latency_and_the_admin_sees_a_summary(self, client, users, monkeypatch):
+        from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+        from langchain_core.messages import AIMessage
+
+        from app.config import get_settings
+
+        dim = get_settings().EMBEDDING_DIMENSION
+
+        async def fake_embed(texts, task_type="RETRIEVAL_QUERY"):
+            return [[0.01] * dim for _ in texts]
+
+        monkeypatch.setattr("app.services.retrieval_service.embed_batch_with_retry", fake_embed)
+        monkeypatch.setattr(
+            "app.services.rag_graph._build_llm",
+            lambda state=None: GenericFakeChatModel(messages=iter([AIMessage(content="A measured answer.")])),
+        )
+        before = run_sql("SELECT count(*) AS n FROM query_metrics")[0]["n"]
+        r = client.post("/query", headers=users["bob"], json={"query": "how fast is this?"})
+        assert r.status_code == 200 and '"type": "done"' in r.text
+
+        deadline = time.time() + 5
+        while time.time() < deadline and run_sql("SELECT count(*) AS n FROM query_metrics")[0]["n"] == before:
+            time.sleep(0.1)
+        row = run_sql("SELECT * FROM query_metrics ORDER BY created_at DESC LIMIT 1")[0]
+        assert row["status"] == "ok" and row["user_id"] == users["bob_id"]
+        assert row["first_token_ms"] is not None and row["total_ms"] >= row["first_token_ms"]
+
+        summary = client.get("/admin/metrics?days=1", headers=users["alice"])
+        assert summary.status_code == 200
+        body = summary.json()
+        assert body["questions"] >= 1 and body["latency_ms"]["total_p50"] is not None
+        assert client.get("/admin/metrics", headers=users["bob"]).status_code == 403
+
+
 class TestConfiguredAdmin:
     """ADMIN_EMAIL + ADMIN_PASSWORD make that account the one and only administrator."""
 
@@ -876,6 +973,21 @@ class TestResumeEditing:
         joined = " ".join(d["details"]["warnings"])
         assert "kubernetes is not in your library" in joined
         assert "Globex Corp is not an employer in your library" in joined
+
+    def test_detail_carries_the_library_resume_for_comparison(self, client, users, seeded):
+        d = client.get(f"/resume/generations/{seeded['gen']}", headers=users["alice"]).json()
+        assert d["library"]["name"] == "Asha Verma" and d["job"] is None
+
+    def test_mark_applied_creates_then_advances_the_tracker_entry(self, client, users, seeded):
+        url = f"/resume/generations/{seeded['gen']}/apply"
+        first = client.post(url, headers=users["alice"]).json()
+        assert first["status"] == "applied" and first["applied_date"] and first["resume_generation_id"] == str(seeded["gen"])
+        client.patch(f"/resume/jobs/{first['id']}", headers=users["alice"], json={"status": "interviewing"})
+        again = client.post(url, headers=users["alice"]).json()
+        assert again["id"] == first["id"] and again["status"] == "interviewing"      # never moved backwards
+        d = client.get(f"/resume/generations/{seeded['gen']}", headers=users["alice"]).json()
+        assert d["job"]["id"] == first["id"]
+        assert client.post(url, headers=users["bob"]).status_code == 404
 
 
 def test_root_says_the_api_is_running(client):

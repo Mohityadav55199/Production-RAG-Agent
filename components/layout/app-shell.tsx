@@ -1,5 +1,6 @@
 import { RequireAuth } from "@/components/auth/require-auth";
 import { AppHeader } from "@/components/layout/app-header";
+import { VerifyEmailBanner } from "@/components/layout/verify-email-banner";
 import { WakingBanner } from "@/components/layout/waking-banner";
 
 export function AppShell({
@@ -19,6 +20,7 @@ export function AppShell({
 
       <WakingBanner />
       <AppHeader activePath={activePath} />
+      <VerifyEmailBanner />
 
       <main className="relative mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
         {children}

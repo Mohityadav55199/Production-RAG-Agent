@@ -29,13 +29,15 @@ from app.api.projects import router as projects_router
 from app.api.query import router as query_router
 from app.api.resume import router as resume_router
 from app.config import get_settings
-from app.services.auth import get_current_user, require_admin
+from app.services.auth import require_admin
+from app.services.email_verification import require_verified_user
 from app.db import models  # noqa: F401 — registers Phase 2 tables with Base.metadata
 from app.db import conversation_models  # noqa: F401 — registers Phase 4 tables
 from app.db import resume_models  # noqa: F401 — registers resume tables
 from app.db import auth_models  # noqa: F401 — registers the users table
 from app.db import asset_models  # noqa: F401 — registers the document_assets table
 from app.db import feedback_models  # noqa: F401 — registers the answer_feedback table
+from app.db import metric_models  # noqa: F401 — registers the query_metrics table
 from app.db.postgres import dispose_engine, get_engine
 from app.db.postgres import Base
 from app.db.qdrant import close_qdrant_client
@@ -46,6 +48,20 @@ from app.utils.logging import get_logger, setup_logging
 _settings = get_settings()
 setup_logging(level=_settings.LOG_LEVEL, environment=_settings.ENVIRONMENT)  # type: ignore[arg-type]
 logger = get_logger(__name__)
+
+# ── Error tracking: only when a Sentry DSN is configured ──────────────────────
+if _settings.SENTRY_DSN:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=_settings.SENTRY_DSN,
+        environment=_settings.ENVIRONMENT,
+        release=_settings.APP_VERSION,
+        traces_sample_rate=_settings.SENTRY_TRACES_SAMPLE_RATE,
+        send_default_pii=False,          # no IPs, cookies or user details
+        max_request_body_size="never",   # questions and uploaded files never leave the server
+    )
+    logger.info("Sentry error tracking enabled")
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
@@ -157,8 +173,9 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
 
-    # Everything else requires a logged-in user; handlers scope data to that user
-    protected = [Depends(get_current_user)]
+    # Everything else requires a logged-in user (with a confirmed email when verification is on);
+    # handlers scope data to that user
+    protected = [Depends(require_verified_user)]
     app.include_router(documents_router, dependencies=protected)             # POST /upload
     app.include_router(document_management_router, dependencies=protected)   # GET/DELETE /documents
     app.include_router(assets_router, dependencies=protected)                # GET /assets/{id}

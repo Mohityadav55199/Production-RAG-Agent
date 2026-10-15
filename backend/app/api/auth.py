@@ -4,6 +4,8 @@ Auth API.
 POST /auth/signup  – create an account, returns a session token (+ a trusted-device token)
 POST /auth/login   – returns the same
 GET  /auth/me      – the current user, including whether they are the administrator
+POST /auth/verify-email         – confirm an email address with the link's token
+POST /auth/resend-verification  – send the confirmation link again (3 per hour)
 
 Password guessing is bounded without relying on the client address (which can be hard to determine
 behind proxies and can be forged):
@@ -35,11 +37,11 @@ from app.services.auth import (
     create_token,
     get_current_user,
     hash_password_async,
-    is_admin_user,
     is_trusted_device,
     validate_password,
     verify_password_async,
 )
+from app.services.email_verification import mark_verified, read_verify_token, send_verification, verification_active
 from app.utils.client_ip import client_address
 from app.utils.rate_limit import SlidingWindowLimiter
 from app.utils.logging import get_logger
@@ -59,6 +61,7 @@ _signup_by_ip = SlidingWindowLimiter(limit=10, window_seconds=60 * 60)
 # visitor address to dodge the limits above) from flooding the API.
 _login_by_peer = SlidingWindowLimiter(limit=600, window_seconds=15 * 60)
 _signup_by_peer = SlidingWindowLimiter(limit=200, window_seconds=60 * 60)
+_resend_by_user = SlidingWindowLimiter(limit=3, window_seconds=60 * 60)
 
 
 def _enforce(limiter: SlidingWindowLimiter, key: str, what: str) -> None:
@@ -93,7 +96,10 @@ def _response(user: User) -> AuthResponse:
     return AuthResponse(
         token=create_token(user.id, user.email),
         device=create_device_token(user.id),
-        user={"id": str(user.id), "email": user.email, "is_admin": bool(user.is_admin)},
+        user={
+            "id": str(user.id), "email": user.email, "is_admin": bool(user.is_admin),
+            "email_verified": bool(user.email_verified),
+        },
     )
 
 
@@ -119,7 +125,10 @@ async def signup(body: Credentials, request: Request) -> AuthResponse:
             is_first = (await session.scalar(select(func.count()).select_from(User))) == 0
             # With ADMIN_EMAIL configured the admin is provisioned at startup; otherwise the first
             # account (the person who set the site up) is the admin.
-            user = User(email=email, password_hash=password_hash, is_admin=is_first and not admin_is_configured())
+            user = User(
+                email=email, password_hash=password_hash, is_admin=is_first and not admin_is_configured(),
+                email_verified=not verification_active(),
+            )
             session.add(user)
             await session.flush()
             if is_first:
@@ -127,6 +136,11 @@ async def signup(body: Credentials, request: Request) -> AuthResponse:
     except IntegrityError:
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists. Try logging in.")
     logger.info("New user registered: id=%s", user.id)
+    if not user.email_verified:
+        try:
+            await send_verification(user.id, user.email)
+        except Exception as exc:  # noqa: BLE001 - the account exists; the user can ask for the link again
+            logger.warning("Could not send the verification email for user %s: %s", user.id, exc)
     return _response(user)
 
 
@@ -164,4 +178,38 @@ async def login(body: Credentials, request: Request) -> AuthResponse:
 
 @router.get("/me")
 async def me(user: CurrentUser = Depends(get_current_user)) -> dict:
-    return {"id": str(user.id), "email": user.email, "is_admin": await is_admin_user(user.id)}
+    async with get_db_session() as session:
+        row = await session.get(User, user.id)
+    return {
+        "id": str(user.id), "email": user.email, "is_admin": bool(row and row.is_admin),
+        "email_verified": bool(row is None or row.email_verified or not verification_active()),
+    }
+
+
+class VerifyRequest(BaseModel):
+    token: str = Field(..., max_length=2000)
+
+
+@router.post("/verify-email", summary="Confirm an email address with the token from the link")
+async def verify_email(body: VerifyRequest) -> dict:
+    user_id, _ = read_verify_token(body.token)
+    user = await mark_verified(user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This verification link is not valid.")
+    return {"ok": True, "email": user.email}
+
+
+@router.post("/resend-verification", summary="Send the confirmation link again")
+async def resend_verification(user: CurrentUser = Depends(get_current_user)) -> dict:
+    async with get_db_session() as session:
+        row = await session.get(User, user.id)
+    if row is None or row.email_verified or not verification_active():
+        return {"ok": True, "sent": False}
+    _enforce(_resend_by_user, str(user.id), "confirmation emails")
+    _resend_by_user.hit(str(user.id))
+    try:
+        await send_verification(row.id, row.email)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not resend the verification email for user %s: %s", user.id, exc)
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Could not send the email. Try again in a few minutes.") from exc
+    return {"ok": True, "sent": True}

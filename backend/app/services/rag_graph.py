@@ -31,6 +31,7 @@ from app.schemas.query import SourceCitation
 from app.services.asset_service import images_for_sources
 from app.services.context_prep import tidy_chunks
 from app.services.conversation_service import save_answer
+from app.services.query_metrics import QueryTimer
 from app.services.query_rewriter import condense_question
 from app.services.retrieval_service import RetrievedChunk, fetch_document_chunks, retrieve_chunks
 from app.services.scope_service import resolve_scope
@@ -411,11 +412,24 @@ async def stream_rag(
     sources_emitted = False
     fallback_emitted = False
     total_chars = 0
+    timer = QueryTimer(user_id=user_id, answer_style=answer_style, scope_kind=scope_kind, images=len(images or []))
+    outcome = "cancelled"   # unless the stream finishes or fails: the client went away
 
     try:
         async for event in graph.astream_events(initial_state, version="v2"):
             kind: str = event["event"]
             name: str = event.get("name", "")
+            in_generate = event.get("metadata", {}).get("langgraph_node") == "generate"
+
+            # ── Metrics: which model answered, and its token usage ──────────────
+            if kind == "on_chat_model_start" and in_generate:
+                meta = event.get("metadata", {})
+                timer.provider = meta.get("provider") or timer.provider
+                timer.model = meta.get("model") or meta.get("ls_model_name") or timer.model
+                timer.fallback_used = timer.fallback_used or bool(meta.get("is_fallback"))
+            elif kind == "on_chat_model_end" and in_generate:
+                output = event.get("data", {}).get("output")
+                timer.add_usage(getattr(output, "usage_metadata", None))
 
             # ── Fallback model detection ───────────────────────────────────────
             if kind == "on_chat_model_start" and not fallback_emitted:
@@ -436,6 +450,7 @@ async def stream_rag(
             elif kind == "on_chain_end" and name == "retrieve" and not sources_emitted:
                 output = event["data"].get("output", {})
                 sources: list[dict] = output.get("sources", [])
+                timer.mark_retrieved(len(sources))
                 yield {
                     "type": "sources",
                     "sources": sources,
@@ -474,15 +489,20 @@ async def stream_rag(
                     token = str(raw)
 
                 if token:
+                    timer.mark_first_token()
                     total_chars += len(token)
                     yield {"type": "chunk", "content": token}
 
         # ── Graph complete ─────────────────────────────────────────────────────────
+        outcome = "ok"
         yield {
             "type": "done",
             "conversation_id": conversation_id,
             "total_chars": total_chars,
         }
     except Exception as e:
+        outcome = "error"
         logger.exception("Error during RAG generation")
         yield {"type": "error", "message": client_error_message(e, "generating the answer")}
+    finally:
+        timer.record(outcome)

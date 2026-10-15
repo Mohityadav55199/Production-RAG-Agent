@@ -108,8 +108,8 @@ def create_token(user_id: uuid.UUID, email: str) -> str:
 def decode_token(token: str) -> CurrentUser:
     try:
         payload = jwt.decode(token, _secret(), algorithms=[_ALGORITHM])
-        if payload.get("typ") == "device":      # device tokens are not login sessions
-            raise ValueError("device token used as a session")
+        if payload.get("typ") in ("device", "verify"):   # device and email-link tokens are not login sessions
+            raise ValueError(f"{payload.get('typ')} token used as a session")
         return CurrentUser(id=uuid.UUID(payload["sub"]), email=payload.get("email", ""))
     except (jwt.PyJWTError, KeyError, ValueError) as exc:
         raise HTTPException(

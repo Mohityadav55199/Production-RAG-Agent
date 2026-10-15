@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, false
+from sqlalchemy import Boolean, DateTime, String, false, true
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -20,4 +20,6 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(100), nullable=False)
     # Granted only by ensure_admin (configuration) or to the very first account when no admin is configured
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    # False only for accounts that signed up while email verification was active and haven't clicked the link
+    email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

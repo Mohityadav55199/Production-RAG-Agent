@@ -7,6 +7,7 @@ Tailoring    POST /resume/tailor                    – multi-agent run, streame
 History      GET  /resume/generations[/{id}]        – past runs, with the editable draft and review data
 Editing      POST /resume/generations/{id}/rescore           – re-render and re-score an edited draft
              POST /resume/generations/{id}/regenerate-bullet – grounded alternatives for one bullet
+             POST /resume/generations/{id}/apply      – mark the run as applied in the job tracker
 Downloads    GET  /resume/generations/{id}/pdf|tex  – any compiled draft; the app shows when it is below the gate
 """
 
@@ -428,6 +429,8 @@ async def _generation_detail(g: ResumeGeneration) -> dict:
         "annotated": None,
         "gap": None,
         "outreach": _saved_outreach(stored),
+        "library": None,
+        "job": await _job_for_generation(g),
     }
     if detail["editable"]:
         library_profile, corpus = await _library_for(g)
@@ -435,6 +438,8 @@ async def _generation_detail(g: ResumeGeneration) -> dict:
             draft = Profile.model_validate(stored["draft"])
             jd = JDAnalysis.model_validate(stored["jd"]) if stored.get("jd") else None
             detail["annotated"] = annotate(draft, library_profile, jd)
+            # Your own resume(s) as they are in the library, for the side-by-side comparison
+            detail["library"] = library_profile.model_dump()
             if stored.get("jd") and g.breakdown.get("has_jd"):
                 detail["gap"] = gap_report(
                     draft, library_profile, JDAnalysis.model_validate(stored["jd"]), g.breakdown, corpus
@@ -576,6 +581,51 @@ async def regenerate_one_bullet(
             "No rewrite stayed within the facts in your library. Try again, add a note, or edit the bullet by hand.",
         )
     return {"options": options}
+
+
+async def _job_for_generation(g: ResumeGeneration) -> dict | None:
+    """The tracker entry that uses this run, if any (newest first)."""
+    async with get_db_session() as session:
+        row = await session.scalar(
+            select(JobApplication)
+            .where(JobApplication.user_id == g.user_id, JobApplication.resume_generation_id == g.id)
+            .order_by(JobApplication.created_at.desc())
+            .limit(1)
+        )
+    return _job_summary(row) if row else None
+
+
+@router.post("/generations/{generation_id}/apply", summary="Mark this run as applied in the job tracker")
+async def mark_applied(generation_id: uuid.UUID, user: CurrentUser = Depends(get_current_user)) -> dict:
+    """Create the tracker entry for this run, or move the existing one to "applied" (never backwards)."""
+    g = await _get_generation(generation_id, user)
+    now = datetime.now(timezone.utc)
+    async with get_db_session() as session:
+        row = await session.scalar(
+            select(JobApplication)
+            .where(JobApplication.user_id == user.key, JobApplication.resume_generation_id == g.id)
+            .order_by(JobApplication.created_at.desc())
+            .limit(1)
+        )
+        if row is None:
+            jd = (g.report or {}).get("jd") or {}
+            row = JobApplication(
+                id=uuid.uuid4(), user_id=user.key,
+                company=(g.company or jd.get("company") or "Company")[:200],
+                job_title=(g.job_title or jd.get("title") or "Position")[:200],
+                status="applied", applied_date=now, resume_generation_id=g.id,
+                resume_version_name=g.output_name, ats_score=g.ats_score, jd_text=g.jd_text,
+            )
+            session.add(row)
+        else:
+            if row.status == "saved":
+                row.status = "applied"
+            row.applied_date = row.applied_date or now
+            row.ats_score = g.ats_score
+            row.resume_version_name = g.output_name
+            row.updated_at = now
+        await session.flush()
+        return _job_summary(row)
 
 
 @router.delete("/generations/{generation_id}", summary="Delete a run")

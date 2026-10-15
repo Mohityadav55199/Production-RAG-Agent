@@ -33,6 +33,8 @@ _STATEMENTS = [
     """,
     "CREATE INDEX IF NOT EXISTS ix_documents_file_hash ON documents (file_hash)",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_user_hash ON documents (user_id, file_hash)",
+    # Email verification: accounts created before it existed count as verified
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT true",
     # Administrator flag (replaces "the oldest account is admin")
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false",
     # Deployments created before the flag existed: keep the original owner (oldest account) as admin

@@ -157,6 +157,10 @@ export interface GenerationDetail extends GenerationSummary {
   annotated: Annotated | null;
   gap: GapReport | null;
   outreach?: SavedOutreach;
+  /** Your own resume(s) from the library, merged, for the side-by-side comparison. */
+  library?: ResumeProfile | null;
+  /** The job tracker entry that uses this run, if any. */
+  job?: JobApplication | null;
 }
 
 /** Outreach saved with a run. `stale` = the draft was edited after it was written. */
@@ -437,3 +441,8 @@ export function generateRecruiterMessage(
   });
 }
 
+
+/** Create the tracker entry for this run, or move the existing one to "applied" (never backwards). */
+export function markApplied(generationId: string): Promise<JobApplication> {
+  return apiFetch<JobApplication>(`/resume/generations/${generationId}/apply`, { method: "POST" });
+}
