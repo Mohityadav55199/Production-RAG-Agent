@@ -650,6 +650,75 @@ class TestUploads:
         assert projects and all("/" in d["filename"] for d in projects)
 
 
+class TestDurableUploads:
+    """Uploads are queued with their bytes, so a restart mid-processing resumes instead of losing the file."""
+
+    @pytest.fixture
+    def fake_embeddings(self, monkeypatch):
+        from app.config import get_settings
+
+        dim = get_settings().EMBEDDING_DIMENSION
+
+        async def fake_embed(texts, task_type="RETRIEVAL_DOCUMENT"):
+            return [[0.01] * dim for _ in texts]
+
+        monkeypatch.setattr("app.services.document_service.embed_batch_with_retry", fake_embed)
+
+    @staticmethod
+    def wait_for(client, headers, doc_id, timeout=30):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            docs = client.get("/documents?limit=100", headers=headers).json()["documents"]
+            doc = next(d for d in docs if d["document_id"] == str(doc_id))
+            if doc["status"] in ("completed", "failed"):
+                return doc
+            time.sleep(0.3)
+        raise AssertionError("document did not finish processing")
+
+    def test_an_upload_is_processed_from_the_queue_and_its_job_removed(self, client, users, fake_embeddings):
+        r = client.post("/upload", headers=users["bob"],
+                        files={"files": ("queued.txt", b"Queued documents are processed by the worker. " * 20)})
+        doc_id = r.json()["documents"][0]["document_id"]
+        assert self.wait_for(client, users["bob"], doc_id)["status"] == "completed"
+        assert run_sql("SELECT count(*) AS n FROM ingestion_jobs WHERE document_id = $1", uuid.UUID(doc_id))[0]["n"] == 0
+
+    def test_an_upload_interrupted_by_a_restart_is_resumed(self, client, users, fake_embeddings):
+        from app.main import app
+        from app.services import ingestion_queue
+        from app.services.document_service import recover_stuck_documents
+
+        doc_id = insert_document("interrupted.txt", "h-interrupted", users["bob_id"], status="EMBEDDING")
+        content = b"This upload was being embedded when the server restarted. " * 20
+        run_sql("""INSERT INTO ingestion_jobs (id, document_id, filename, content, status, attempts, locked_at, created_at)
+                   VALUES ($1, $2, 'interrupted.txt', $3, 'running', 1, now(), now())""", uuid.uuid4(), doc_id, content)
+
+        async def restart():
+            await recover_stuck_documents()          # what startup does
+            ingestion_queue.notify()
+            return {"ok": True}
+
+        app.add_api_route("/_restart_uploads", restart, methods=["POST"])
+        client.post("/_restart_uploads")
+        doc = self.wait_for(client, users["bob"], doc_id)
+        assert doc["status"] == "completed", doc
+        assert run_sql("SELECT count(*) AS n FROM ingestion_jobs WHERE document_id = $1", doc_id)[0]["n"] == 0
+
+    def test_a_stuck_document_without_a_job_is_still_marked_failed(self, client, users):
+        from app.main import app
+        from app.services.document_service import recover_stuck_documents
+
+        doc_id = insert_document("orphan.txt", "h-orphan-stuck", users["bob_id"], status="PARSING")
+
+        async def recover():
+            await recover_stuck_documents()
+            return {"ok": True}
+
+        app.add_api_route("/_recover_docs", recover, methods=["POST"])
+        client.post("/_recover_docs")
+        row = run_sql("SELECT status::text AS status, current_stage FROM documents WHERE id = $1", doc_id)[0]
+        assert row["status"] == "FAILED" and row["current_stage"] == "stuck_recovered"
+
+
 class TestResumeEditing:
     """The editable draft: review data, downloads below the gate, re-scoring and bullet suggestions."""
 

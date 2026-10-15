@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, select
 
-from app.db.models import Document, DocumentStatus
+from app.db.models import Document, DocumentStatus, IngestionJob
 from app.db.postgres import get_db_session
 from app.schemas.document_management import (
     DocumentDeleteResponse,
@@ -163,6 +163,8 @@ async def delete_document(document_id: uuid.UUID, user_id: str | None) -> Docume
         await session.execute(
             delete(Document).where(Document.id == document_id)
         )
+        # A file still waiting to be processed is dropped with its stored bytes
+        await session.execute(delete(IngestionJob).where(IngestionJob.document_id == document_id))
 
     logger.info("Document id=%s deleted successfully", doc_id_str)
 

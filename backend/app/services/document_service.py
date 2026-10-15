@@ -352,36 +352,27 @@ async def _process_single_file(
     return await _run_pipeline(doc, filename, content, settings)
 
 
-_upload_tasks: set[asyncio.Task] = set()
-
-
-async def _run_queued(queued: list[tuple[Document, str, bytes]], settings) -> None:
-    for doc, filename, content in queued:
-        try:
-            await _run_pipeline(doc, filename, content, settings)
-        except Exception:  # _run_pipeline records failures itself; this only guards the loop
-            logger.exception("Background processing crashed for '%s'", filename)
-
-
 async def queue_uploads(
     files: list[tuple[str, bytes]],
     user_id: str | None = None,
 ) -> UploadResponse:
     """
-    Register every file immediately (duplicates are reported at once) and process the rest in the
-    background, so the upload request returns in moments instead of holding a connection open
-    for the whole embedding run. Progress shows up in the documents list.
+    Register every file immediately (duplicates are reported at once) and queue the rest for the ingestion
+    worker, so the upload request returns in moments instead of holding a connection open for the whole
+    embedding run. The bytes are stored with the job, so a restart does not lose them. Progress shows up
+    in the documents list.
     """
-    settings = get_settings()
+    from app.services import ingestion_queue
+
     results: list[DocumentResult] = []
-    queued: list[tuple[Document, str, bytes]] = []
 
     for filename, content in files:
         doc, early = await _prepare_file(filename, content, user_id)
         if early is not None:
             results.append(early)
             continue
-        queued.append((doc, filename, content))
+        await _update_document(doc.id, status=DocumentStatus.PENDING, current_stage="queued", error_message=None)
+        await ingestion_queue.enqueue(doc.id, filename, content)
         results.append(DocumentResult(
             document_id=doc.id,
             filename=filename,
@@ -390,11 +381,6 @@ async def queue_uploads(
             created_at=doc.created_at,
             message="Processing in the background.",
         ))
-
-    if queued:
-        task = asyncio.create_task(_run_queued(queued, settings))
-        _upload_tasks.add(task)
-        task.add_done_callback(_upload_tasks.discard)
 
     return UploadResponse(
         total=len(results),
@@ -431,10 +417,14 @@ async def process_uploads(
 
 async def recover_stuck_documents() -> None:
     """
-    On startup, find any documents that were left in a processing state due
-    to a server crash. Mark them as FAILED so they can be resumed cleanly
-    by the idempotent resume logic on next upload.
+    On startup: uploads with a queued job are picked up again by the ingestion worker. Documents left in
+    a processing state WITHOUT a job (e.g. a project import that was running in the request) cannot be
+    resumed automatically; they are marked FAILED so re-uploading the identical file resumes them.
     """
+    from app.db.models import IngestionJob
+    from app.services.ingestion_queue import requeue_unfinished
+
+    await requeue_unfinished()
     async with get_db_session() as session:
         result = await session.execute(
             update(Document)
@@ -445,6 +435,7 @@ async def recover_stuck_documents() -> None:
                 DocumentStatus.EMBEDDING,
                 DocumentStatus.INDEXING,
             ]))
+            .where(~Document.id.in_(select(IngestionJob.document_id)))
             .values(
                 status=DocumentStatus.FAILED,
                 current_stage="stuck_recovered",

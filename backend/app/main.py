@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # ── Startup: ensure Qdrant collection exists ──────────────────────────────
     await ensure_collection()
 
-    # ── Startup: recover stuck documents ──────────────────────────────────────
+    # ── Startup: re-queue interrupted uploads; fail stuck documents nothing can resume ──
     from app.services.document_service import recover_stuck_documents
     await recover_stuck_documents()
 
@@ -90,11 +90,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.services.llm_factory import keep_groq_models_fresh
     model_refresh = asyncio.create_task(keep_groq_models_fresh())
 
+    # ── Startup: the upload worker (resumes uploads a restart interrupted) ────
+    from app.services.ingestion_queue import run_worker
+    ingestion_worker = asyncio.create_task(run_worker())
+
     yield
 
     # ── Shutdown ──────────────────────────────────────────────────────────────
     logger.info("Shutting down — releasing resources …")
     model_refresh.cancel()
+    ingestion_worker.cancel()
     await dispose_engine()
     await close_qdrant_client()
     logger.info("Shutdown complete")

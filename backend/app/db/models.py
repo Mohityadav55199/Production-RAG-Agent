@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from enum import Enum as PyEnum
 
-from sqlalchemy import BigInteger, DateTime, Enum, Index, Integer, String, Text, Boolean
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, Index, Integer, LargeBinary, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -91,3 +91,24 @@ class Document(Base):
             f"<Document id={self.id} filename={self.filename!r} "
             f"status={self.status.value} chunks={self.chunk_count}>"
         )
+
+
+class IngestionJob(Base):
+    """
+    An upload waiting to be (or being) parsed, chunked and embedded.
+
+    The file's bytes live here until the document is processed, so a restart mid-processing loses
+    nothing: the worker picks the job up again on startup. The row is deleted once the document
+    reaches COMPLETED or FAILED.
+    """
+
+    __tablename__ = "ingestion_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, unique=True, index=True)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued", index=True)  # queued | running
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
