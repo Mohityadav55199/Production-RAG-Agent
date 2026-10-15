@@ -88,7 +88,7 @@ async def condense_question(query: str, history: list[BaseMessage]) -> str:
         content = response.content if isinstance(response.content, str) else str(response.content)
         condensed = _clean(content, query)
         if condensed != query:
-            logger.info("condense_question: %r -> %r", query[:80], condensed[:120])
+            logger.debug("condense_question: %r -> %r", query[:80], condensed[:120])
         return condensed
     except Exception as exc:  # noqa: BLE001 - retrieval must still work without the rewrite
         logger.warning("condense_question failed (%s); using the original question", exc)

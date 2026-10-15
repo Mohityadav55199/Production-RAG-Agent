@@ -7,7 +7,7 @@ All operations are async and use the existing get_db_session() context manager.
 Responsibilities:
   - get_or_create_conversation  — resolve or mint a new session UUID
   - load_history                — fetch last N turns as LangChain messages
-  - save_turn                   — persist user + assistant message pair
+  - save_question / save_answer — persist the two halves of a turn
 """
 
 import uuid
@@ -89,15 +89,19 @@ async def load_history(
         result = await session.execute(
             select(Message)
             .where(Message.conversation_id == conversation_id)
-            .order_by(Message.created_at.desc())
+            # Older turns stored both halves with one timestamp; role breaks the tie (user before assistant)
+            .order_by(Message.created_at.desc(), Message.role.asc())
             .limit(max_pairs * 2)
         )
         rows = list(reversed(result.scalars().all()))
 
     messages: list[BaseMessage] = []
-    for row in rows:
+    for i, row in enumerate(rows):
         if row.role == "user":
-            messages.append(HumanMessage(content=row.content))
+            # A question whose answer never arrived (client left, generation failed) is not history
+            answered = i + 1 < len(rows) and rows[i + 1].role == "assistant"
+            if answered:
+                messages.append(HumanMessage(content=row.content))
         elif row.role == "assistant":
             messages.append(AIMessage(content=row.content))
 
@@ -109,48 +113,23 @@ async def load_history(
     return messages
 
 
-async def save_turn(
-    conversation_id: uuid.UUID,
-    user_message: str,
-    assistant_message: str,
-) -> None:
-    """
-    Persist one complete user/assistant turn.
-
-    Both messages are written in the same transaction so they either
-    both succeed or both fail — no half-saved turns.
-
-    Also bumps Conversation.updated_at so the conversation list stays sorted.
-    """
+async def _add_message(conversation_id: uuid.UUID, role: str, content: str) -> None:
     now = datetime.now(tz=timezone.utc)
-
     async with get_db_session() as session:
-        # Bump updated_at on the parent conversation
-        conv_result = await session.execute(
-            select(Conversation).where(Conversation.id == conversation_id)
-        )
-        conv = conv_result.scalar_one_or_none()
+        conv = await session.get(Conversation, conversation_id)
         if conv is not None:
-            conv.updated_at = now
+            conv.updated_at = now  # keeps the conversation list sorted by activity
+        session.add(Message(id=uuid.uuid4(), conversation_id=conversation_id, role=role, content=content, created_at=now))
 
-        session.add(Message(
-            id=uuid.uuid4(),
-            conversation_id=conversation_id,
-            role="user",
-            content=user_message,
-            created_at=now,
-        ))
-        session.add(Message(
-            id=uuid.uuid4(),
-            conversation_id=conversation_id,
-            role="assistant",
-            content=assistant_message,
-            created_at=now,
-        ))
 
-    logger.debug(
-        "Saved turn for conversation_id=%s (user=%d chars, assistant=%d chars)",
-        conversation_id,
-        len(user_message),
-        len(assistant_message),
-    )
+async def save_question(conversation_id: uuid.UUID, user_message: str) -> None:
+    """Record the question before answering it, so it counts toward the daily quota even when the client
+    disconnects or generation fails."""
+    await _add_message(conversation_id, "user", user_message)
+    logger.debug("Saved question for conversation_id=%s (%d chars)", conversation_id, len(user_message))
+
+
+async def save_answer(conversation_id: uuid.UUID, assistant_message: str) -> None:
+    """Record the answer to the question saved last."""
+    await _add_message(conversation_id, "assistant", assistant_message)
+    logger.debug("Saved answer for conversation_id=%s (%d chars)", conversation_id, len(assistant_message))

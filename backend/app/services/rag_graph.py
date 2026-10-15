@@ -30,11 +30,12 @@ from app.config import get_settings
 from app.schemas.query import SourceCitation
 from app.services.asset_service import images_for_sources
 from app.services.context_prep import tidy_chunks
-from app.services.conversation_service import save_turn
+from app.services.conversation_service import save_answer
 from app.services.query_rewriter import condense_question
 from app.services.retrieval_service import RetrievedChunk, fetch_document_chunks, retrieve_chunks
 from app.services.scope_service import resolve_scope
 from app.services.vision import image_content, vision_available, vision_chat_model
+from app.utils.errors import client_error_message
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -224,13 +225,8 @@ async def _retrieve_node(state: RAGState) -> dict:
         ]
         chunks = overview + chunks
 
-    logger.info(
-        "retrieve_node: %d chunks for query=%r scope=%s style=%s",
-        len(chunks),
-        search_query[:80],
-        scope.label,
-        style,
-    )
+    logger.info("retrieve_node: %d chunks scope=%s style=%s", len(chunks), scope.label, style)
+    logger.debug("retrieve_node: search query=%r", search_query[:80])
     pictures = await images_for_sources(sorted({c.document_id for c in chunks}), state.get("user_id"))
     return {"chunks": chunks, "sources": to_sources(chunks, pictures), "scope_label": scope.label}
 
@@ -250,7 +246,7 @@ async def _generate_node(state: RAGState) -> dict:
     if images:
         # Groq's text models cannot see images, so these go straight to Gemini (no text-only fallback chain)
         if not vision_available():
-            raise RuntimeError("Questions about images need a Gemini API key (GOOGLE_API_KEY).")
+            raise ValueError("Questions about images need a Gemini API key (GOOGLE_API_KEY).")
         llm = vision_chat_model(streaming=True)
     else:
         llm = _build_llm(state)
@@ -314,17 +310,12 @@ async def _generate_node(state: RAGState) -> dict:
 
 async def _save_history_node(state: RAGState) -> dict:
     """
-    Persist the current user+assistant turn to PostgreSQL.
+    Persist the assistant's answer (the question was saved when the request arrived).
 
     This node runs after streaming completes, so the full answer is available.
     """
-    await save_turn(
-        conversation_id=uuid.UUID(state["conversation_id"]),
-        # Image bytes are never stored; the history only notes that images were part of the question
-        user_message=state["query"] + (f"\n[Attached {len(state['images'])} image(s)]" if state.get("images") else ""),
-        assistant_message=state["answer"],
-    )
-    logger.debug("save_history_node: turn saved for conv=%s", state["conversation_id"])
+    await save_answer(uuid.UUID(state["conversation_id"]), state["answer"])
+    logger.debug("save_history_node: answer saved for conv=%s", state["conversation_id"])
     return {}
 
 
@@ -493,8 +484,5 @@ async def stream_rag(
             "total_chars": total_chars,
         }
     except Exception as e:
-        logger.error(f"Error during RAG generation: {e}")
-        yield {
-            "type": "error",
-            "message": f"Generation failed: {str(e)}"
-        }
+        logger.exception("Error during RAG generation")
+        yield {"type": "error", "message": client_error_message(e, "generating the answer")}

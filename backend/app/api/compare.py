@@ -28,6 +28,7 @@ from app.services.vision import (
     transcribe_code,
     vision_available,
 )
+from app.utils.errors import client_error_message
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -55,7 +56,7 @@ async def _generate(request: Request, body: CompareRequest, user_id: str) -> Asy
         yield _sse({"type": "error", "message": str(exc)})
     except Exception as exc:
         logger.exception("Comparison failed")
-        yield _sse({"type": "error", "message": f"Comparison failed: {type(exc).__name__}: {exc}"})
+        yield _sse({"type": "error", "message": client_error_message(exc, "comparing")})
     yield _sse("[DONE]")
 
 

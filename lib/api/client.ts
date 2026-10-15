@@ -3,8 +3,15 @@ export const API_BASE = "/api";
 const TOKEN_KEY = "rag_token";
 export const UNAUTHORIZED_EVENT = "rag:unauthorized";
 
+/**
+ * The saved "API Base URL" override is a development convenience. Production builds ignore it:
+ * every request carries the session token, and a stored URL (planted by a script or a tricked user)
+ * would send that token to someone else's server.
+ */
+export const BACKEND_OVERRIDE_ALLOWED = process.env.NODE_ENV !== "production";
+
 export function getApiBase(): string {
-  if (typeof window !== "undefined") {
+  if (BACKEND_OVERRIDE_ALLOWED && typeof window !== "undefined") {
     const stored = localStorage.getItem("rag_backend_url");
     if (stored) return stored.replace(/\/$/, "");
   }

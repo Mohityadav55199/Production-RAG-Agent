@@ -10,7 +10,7 @@ import {
   Sparkles,
   XCircle,
 } from "lucide-react";
-import { getApiBase } from "@/lib/api/client";
+import { BACKEND_OVERRIDE_ALLOWED, getApiBase } from "@/lib/api/client";
 import { useHealth } from "@/lib/hooks/use-health";
 import {
   Card,
@@ -137,20 +137,22 @@ export function SettingsPanel() {
             <Skeleton className="h-24 w-full" />
           ) : (
             <>
-              <div className="flex flex-col gap-2 border-b border-border/60 pb-3">
-                <span className="text-muted-foreground font-medium">API Base URL</span>
-                <div className="flex gap-2 max-w-md">
-                  <Input
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    placeholder="http://localhost:8000"
-                    className="font-mono text-xs"
-                  />
-                  <Button size="sm" onClick={handleSaveUrl}>
-                    Save
-                  </Button>
+              {BACKEND_OVERRIDE_ALLOWED && (
+                <div className="flex flex-col gap-2 border-b border-border/60 pb-3">
+                  <span className="text-muted-foreground font-medium">API Base URL</span>
+                  <div className="flex gap-2 max-w-md">
+                    <Input
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      placeholder="http://localhost:8000"
+                      className="font-mono text-xs"
+                    />
+                    <Button size="sm" onClick={handleSaveUrl}>
+                      Save
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="flex justify-between border-b border-border/60 py-2">
                 <span className="text-muted-foreground">Environment</span>
                 <span>{health?.environment ?? "unknown"}</span>

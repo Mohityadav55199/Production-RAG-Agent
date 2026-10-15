@@ -50,8 +50,9 @@ from app.schemas.query import QueryRequest, SSEThinking
 from app.services.auth import CurrentUser, get_current_user
 from app.services.quota import enforce_daily_quota
 from app.services.vision import ImageError, QuotaError, check_vision_quota, decode_chat_image, vision_available
-from app.services.conversation_service import get_or_create_conversation, load_history
+from app.services.conversation_service import get_or_create_conversation, load_history, save_question
 from app.services.rag_graph import stream_rag
+from app.utils.errors import client_error_message
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -89,7 +90,7 @@ async def _generate_sse(
 
     Pipeline:
         1. Resolve / create conversation (PostgreSQL)
-        2. Load conversation history (PostgreSQL)
+        2. Load conversation history, then record the question (PostgreSQL)
         3. Yield "thinking" event immediately
         4. Run LangGraph astream_events:
              a. After retrieve node  → yield "sources" event
@@ -101,9 +102,14 @@ async def _generate_sse(
     try:
         conv_id = await get_or_create_conversation(conversation_id, user_id)
         history = await load_history(conv_id)
+        # Saved now, not with the answer, so the question counts toward the daily quota even if the
+        # client disconnects mid-stream. Image bytes are never stored; the history only notes them.
+        await save_question(
+            conv_id, query + (f"\n[Attached {len(images)} image(s)]" if images else "")
+        )
     except Exception as exc:
         logger.exception("Conversation setup failed: %s", exc)
-        yield _sse({"type": "error", "message": f"Conversation setup failed: {exc}"})
+        yield _sse({"type": "error", "message": client_error_message(exc, "starting the conversation")})
         yield _sse("[DONE]")
         return
 
@@ -135,7 +141,7 @@ async def _generate_sse(
 
     except Exception as exc:
         logger.exception("RAG graph stream error for conv=%s: %s", conv_id, exc)
-        yield _sse({"type": "error", "message": str(exc)})
+        yield _sse({"type": "error", "message": client_error_message(exc, "generating the answer")})
 
     # ── 5. SSE stream terminator ──────────────────────────────────────────────
     yield _sse("[DONE]")
@@ -193,14 +199,15 @@ async def query_endpoint(
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
 
     logger.info(
-        "POST /query | conv=%s top_k=%d style=%s project=%s doc=%s query=%r",
+        "POST /query | conv=%s top_k=%d style=%s project=%s doc=%s query_chars=%d",
         body.conversation_id,
         body.top_k,
         body.answer_style,
         body.project,
         body.document_id,
-        body.query[:80],
+        len(body.query),
     )
+    logger.debug("POST /query | query=%r", body.query[:80])
     if images:
         logger.info("POST /query | %d image(s) attached", len(images))
 
@@ -224,6 +231,6 @@ async def query_endpoint(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",       # disable nginx proxy buffering
-            "Access-Control-Allow-Origin": "*",
+            # CORS headers come from CORSMiddleware (CORS_ORIGINS); never widen them here
         },
     )

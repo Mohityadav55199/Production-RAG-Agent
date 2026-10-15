@@ -32,6 +32,7 @@ from app.services.resume.outreach import generate_cover_letter, generate_recruit
 from app.services.resume.review import annotate, claims_check, find_item, gap_report
 from app.services.resume.schemas import JDAnalysis, Profile, RenderOptions
 from app.utils.rate_limit import SlidingWindowLimiter
+from app.utils.errors import client_error_message
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -357,7 +358,7 @@ async def _tailor_run(
             })
     except Exception as exc:
         logger.exception("Tailoring failed")
-        yield _sse({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
+        yield _sse({"type": "error", "message": client_error_message(exc, "tailoring the resume")})
     yield _sse("[DONE]")
 
 

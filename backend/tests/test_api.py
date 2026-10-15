@@ -373,6 +373,45 @@ class TestIsolation:
         assert da["status"] != "already_exists" and db["status"] != "already_exists"
 
 
+class TestQuestions:
+    def test_question_is_saved_before_the_answer_and_errors_stay_generic(self, client, users, monkeypatch):
+        import app.api.query as query_api
+
+        async def failing_stream(**kwargs):
+            raise RuntimeError("could not reach postgresql://admin:hunter2@db.internal/rag")
+            yield  # pragma: no cover - makes this an async generator
+
+        monkeypatch.setattr(query_api, "stream_rag", failing_stream)
+        res = client.post("/query", headers=users["bob"], json={"query": "what does the report say?"})
+        assert res.status_code == 200
+        assert "hunter2" not in res.text and "Something went wrong" in res.text
+        assert "access-control-allow-origin" not in {k.lower() for k in res.headers}
+
+        rows = run_sql(
+            "SELECT m.role, m.content FROM messages m JOIN conversations c ON c.id = m.conversation_id "
+            "WHERE c.user_id = $1",
+            users["bob_id"],
+        )
+        # Counted toward the daily quota even though no answer was produced
+        assert [(r["role"], r["content"]) for r in rows] == [("user", "what does the report say?")]
+
+    def test_unanswered_questions_are_left_out_of_history(self, client, users):
+        from app.main import app
+        from app.services.conversation_service import (
+            get_or_create_conversation, load_history, save_answer, save_question,
+        )
+
+        async def history_route():
+            conv = await get_or_create_conversation(None, users["alice_id"])
+            await save_question(conv, "first question")       # its answer never arrived
+            await save_question(conv, "second question")
+            await save_answer(conv, "second answer")
+            return [m.content for m in await load_history(conv)]
+
+        app.add_api_route("/_history_check", history_route, methods=["GET"])
+        assert client.get("/_history_check").json() == ["second question", "second answer"]
+
+
 class TestResumeIsolationAndGate:
     @pytest.fixture(scope="class")
     def seeded(self, client, users):

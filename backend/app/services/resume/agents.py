@@ -36,6 +36,7 @@ from app.services.resume.latex import (
 )
 from app.services.resume.llm_utils import llm_json
 from app.services.resume.schemas import Education, Experience, JDAnalysis, Profile, Project, RenderOptions
+from app.utils.errors import client_error_message
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -590,7 +591,7 @@ async def run_tailoring(
             queue.put_nowait({"type": "final", "state": final})
         except Exception as exc:
             logger.exception("Tailoring graph failed")
-            queue.put_nowait({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
+            queue.put_nowait({"type": "error", "message": client_error_message(exc, "tailoring the resume")})
         finally:
             queue.put_nowait(None)
 

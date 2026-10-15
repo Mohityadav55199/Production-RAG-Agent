@@ -108,10 +108,13 @@ def create_app() -> FastAPI:
     )
 
     # ── CORS ──────────────────────────────────────────────────────────────────
+    # Auth is a bearer token in the Authorization header, never a cookie, so credentialed CORS is not needed
+    if settings.ENVIRONMENT == "production" and "*" in settings.CORS_ORIGINS:
+        logger.warning("CORS_ORIGINS allows any origin in production; set it to the frontend's URL")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
