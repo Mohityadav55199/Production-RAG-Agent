@@ -98,12 +98,14 @@ async def load_history(
     messages: list[BaseMessage] = []
     for i, row in enumerate(rows):
         if row.role == "user":
-            # A question whose answer never arrived (client left, generation failed) is not history
-            answered = i + 1 < len(rows) and rows[i + 1].role == "assistant"
-            if answered:
+            # A question whose answer never arrived (client left, generation failed, empty reply) is not
+            # history. Empty messages would also make Claude reject the whole request.
+            answered = i + 1 < len(rows) and rows[i + 1].role == "assistant" and bool((rows[i + 1].content or "").strip())
+            if answered and (row.content or "").strip():
                 messages.append(HumanMessage(content=row.content))
-        elif row.role == "assistant":
-            messages.append(AIMessage(content=row.content))
+        elif row.role == "assistant" and (row.content or "").strip():
+            if messages and isinstance(messages[-1], HumanMessage):
+                messages.append(AIMessage(content=row.content))
 
     logger.debug(
         "Loaded %d history messages for conversation_id=%s",

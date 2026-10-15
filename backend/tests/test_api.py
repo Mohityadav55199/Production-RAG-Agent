@@ -411,6 +411,24 @@ class TestQuestions:
         app.add_api_route("/_history_check", history_route, methods=["GET"])
         assert client.get("/_history_check").json() == ["second question", "second answer"]
 
+    def test_empty_answers_are_left_out_of_history(self, client, users):
+        # Claude rejects a request containing an empty message, which would push every later turn to the backup model
+        from app.main import app
+        from app.services.conversation_service import (
+            get_or_create_conversation, load_history, save_answer, save_question,
+        )
+
+        async def history_route():
+            conv = await get_or_create_conversation(None, users["alice_id"])
+            await save_question(conv, "first question")
+            await save_answer(conv, "   ")                     # an empty reply
+            await save_question(conv, "second question")
+            await save_answer(conv, "second answer")
+            return [m.content for m in await load_history(conv)]
+
+        app.add_api_route("/_empty_history_check", history_route, methods=["GET"])
+        assert client.get("/_empty_history_check").json() == ["second question", "second answer"]
+
 
 class TestResumeIsolationAndGate:
     @pytest.fixture(scope="class")

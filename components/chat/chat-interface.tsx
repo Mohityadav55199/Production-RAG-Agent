@@ -226,7 +226,10 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === assistantId
-                  ? { ...msg, isStreaming: false }
+                  ? msg.content.trim()
+                    ? { ...msg, isStreaming: false }
+                    : // The model finished without any text: say so instead of leaving an empty bubble
+                      { ...msg, isStreaming: false, error: "No answer came back.", content: "No answer came back. Please ask again." }
                   : msg
               )
             );
