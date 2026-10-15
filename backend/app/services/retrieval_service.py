@@ -8,6 +8,7 @@ Reuses the existing embed_texts() from Phase 2 — task_type is the only
 difference between document ingestion and query embedding.
 """
 
+import re
 from collections import OrderedDict
 from dataclasses import dataclass
 
@@ -20,8 +21,6 @@ from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-
-import re
 
 @dataclass
 class RetrievedChunk:
@@ -55,64 +54,88 @@ _STOPWORDS = {
 }
 
 
+_TOKEN_RE = re.compile(r"[a-z0-9_][a-z0-9_\-\.]*[a-z0-9_]")
+
+# Largest product of the boosts below; dividing by it keeps the composite score in 0-1 like a cosine score
+_MAX_BOOST = 1.25 * 1.40
+
+
+def _rank_key(c: "RetrievedChunk") -> tuple:
+    """Best score first; equal scores in reading order, so results never depend on how the index orders ties."""
+    return (-c.score, c.document_id, c.page_number, c.chunk_index)
+
+
+def _stem(word: str) -> str:
+    """Light suffix stripping so "files"/"file" and "searching"/"search" match; not a full stemmer."""
+    if len(word) > 4 and word.endswith("ies"):
+        return word[:-3] + "y"
+    for suffix in ("ing", "ed", "es", "s"):
+        if len(word) > len(suffix) + 3 and word.endswith(suffix) and not word.endswith("ss"):
+            return word[: -len(suffix)]
+    return word
+
+
+def _tokens(text: str) -> list[str]:
+    """Lower-case, lightly stemmed word tokens; "role-based" and "app.main" stay whole."""
+    return [_stem(t) for t in _TOKEN_RE.findall(text.lower())]
+
+
+def _has_phrase(words: list[str], text_tokens: list[str]) -> bool:
+    """True if any 2- or 3-word run of the query appears, word for word, in the text."""
+    joined = f" {' '.join(text_tokens)} "
+    for n in (2, 3):
+        for i in range(len(words) - n + 1):
+            if f" {' '.join(words[i:i + n])} " in joined:
+                return True
+    return False
+
+
 def flash_rerank_chunks(
     query: str,
     chunks: list[RetrievedChunk],
     top_k: int = 5,
 ) -> list[RetrievedChunk]:
     """
-    Second-stage flash cross-encoder reranker.
+    Second-stage lexical reranker (cheap, no model call).
 
     Scores candidate chunks using:
-      1. Exact token coverage (non-stopwords).
+      1. Whole-word coverage of the query's non-stopwords ("go" does not match "google").
       2. Heading & section alignment (1.25x boost).
       3. Contiguous 2-gram and 3-gram phrase match (1.40x boost).
       4. Length penalty for chunks under 100 characters.
+    The composite is normalised to 0-1.
     """
     if not chunks:
         return []
 
-    words = re.findall(r"\b[a-zA-Z0-9_\-\.]{2,}\b", query.lower())
+    words = [w for w in _tokens(query) if len(w) >= 2]
     q_tokens = [w for w in words if w not in _STOPWORDS] or words
     if not q_tokens:
         return chunks[:top_k]
 
     reranked: list[RetrievedChunk] = []
     for c in chunks:
-        text_lower = c.text.lower()
-        heading_lower = (c.heading or "").lower()
-        section_lower = (c.section or "").lower()
+        text_tokens = _tokens(c.text)
+        text_set = set(text_tokens)
+        heading_set = set(_tokens(f"{c.heading or ''} {c.section or ''}"))
 
-        # 1. Exact token coverage
-        matched = sum(1 for t in q_tokens if t in text_lower)
-        token_coverage = matched / len(q_tokens)
+        # 1. Whole-word token coverage
+        token_coverage = sum(1 for t in q_tokens if t in text_set) / len(q_tokens)
 
         # 2. Heading and section weight (1.25x boost)
-        heading_match = any(t in heading_lower or t in section_lower for t in q_tokens)
-        heading_boost = 1.25 if heading_match else 1.0
+        heading_boost = 1.25 if any(t in heading_set for t in q_tokens) else 1.0
 
         # 3. Contiguous phrase bonus (1.40x boost)
-        phrase_match = False
-        if len(words) >= 2:
-            for i in range(len(words) - 1):
-                bigram = f"{words[i]} {words[i+1]}"
-                if bigram in text_lower:
-                    phrase_match = True
-                    break
-        if not phrase_match and len(words) >= 3:
-            for i in range(len(words) - 2):
-                trigram = f"{words[i]} {words[i+1]} {words[i+2]}"
-                if trigram in text_lower:
-                    phrase_match = True
-                    break
-        phrase_boost = 1.40 if phrase_match else 1.0
+        phrase_boost = 1.40 if _has_phrase(words, text_tokens) else 1.0
 
         # 4. Length penalty for very short snippets
         length_factor = min(1.0, max(0.2, len(c.text) / 100.0))
 
         # Composite score blending dense score (0.40) and token coverage (0.60)
         dense = c.dense_score if c.dense_score is not None else c.score
-        composite = (dense * 0.40 + token_coverage * 0.60) * heading_boost * phrase_boost * length_factor
+        composite = (
+            (dense * 0.40 + token_coverage * 0.60) * heading_boost * phrase_boost * length_factor / _MAX_BOOST
+        )
 
         reranked.append(
             RetrievedChunk(
@@ -129,7 +152,7 @@ def flash_rerank_chunks(
             )
         )
 
-    reranked.sort(key=lambda x: x.score, reverse=True)
+    reranked.sort(key=_rank_key)
     return reranked[:top_k]
 
 
@@ -221,11 +244,12 @@ async def retrieve_chunks(
 
     # Log all raw candidate scores before filtering
     if search_results:
-        logger.info("Raw candidate scores before filtering for query '%s':", query)
+        # Query text and per-candidate detail are user data: DEBUG only
+        logger.debug("Raw candidate scores before filtering for query %r:", query)
         for i, hit in enumerate(search_results):
             payload = hit.payload or {}
             filename = payload.get("filename", "unknown")
-            logger.info("  Candidate #%d: filename='%s' score=%.4f", i+1, filename, hit.score)
+            logger.debug("  Candidate #%d: filename='%s' score=%.4f", i+1, filename, hit.score)
     else:
         logger.info("No raw candidates returned from Qdrant search.")
 
@@ -288,18 +312,20 @@ async def retrieve_chunks(
                 if settings.RERANKING_ENABLED and rerank and len(valid_candidates) > 1:
                     valid_candidates = flash_rerank_chunks(query, valid_candidates, top_k=candidate_limit)
                 else:
-                    valid_candidates.sort(key=lambda c: c.score, reverse=True)
+                    valid_candidates.sort(key=_rank_key)
 
-                top_score = valid_candidates[0].score
+                # The gap limit (RETRIEVAL_MAX_GAP) is a cosine-similarity distance, so it is measured on the
+                # dense scores even after reranking has reordered the candidates
+                top_score = max((c.dense_score if c.dense_score is not None else c.score) for c in valid_candidates)
                 gap_cutoff = top_score - gap if gap is not None else float("-inf")
-                logger.info("Top score for query is %.4f. Gap cutoff is %.4f (max_gap=%s)", top_score, gap_cutoff, gap)
+                logger.debug("Top dense score is %.4f. Gap cutoff is %.4f (max_gap=%s)", top_score, gap_cutoff, gap)
 
                 for c in valid_candidates:
-                    # Apply relative score gap limit
-                    if c.score < gap_cutoff:
-                        logger.info(
-                            "Filtering out chunk filename='%s' index=%d (score=%.4f < gap_cutoff=%.4f)",
-                            c.filename, c.chunk_index, c.score, gap_cutoff
+                    dense = c.dense_score if c.dense_score is not None else c.score
+                    if dense < gap_cutoff:
+                        logger.debug(
+                            "Filtering out chunk filename='%s' index=%d (dense=%.4f < gap_cutoff=%.4f)",
+                            c.filename, c.chunk_index, dense, gap_cutoff
                         )
                         continue
                     chunks.append(c)

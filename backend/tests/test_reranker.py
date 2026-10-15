@@ -102,3 +102,30 @@ def test_flash_rerank_length_penalty():
     query = "substantive chunk text architecture"
     reranked = flash_rerank_chunks(query, [short_chunk, full_chunk], top_k=2)
     assert reranked[0].document_id == "doc_full"
+
+
+def _chunk(doc_id: str, text: str, score: float = 0.7) -> RetrievedChunk:
+    return RetrievedChunk(document_id=doc_id, filename=f"{doc_id}.md", page_number=1, chunk_index=0,
+                          text=text, score=score)
+
+
+def test_flash_rerank_matches_whole_words_only():
+    """A query word inside a longer word ("go" in "google") is not a match."""
+    real = _chunk("go", "Our backend services are written in Go and deployed as small static binaries for speed.")
+    false_hit = _chunk("google", "Google Cloud hosts the ergonomic algorithm demo, which is a good place for new hires to begin onboarding.")
+    # Substring matching scored both chunks as full matches and kept the false hit first
+    reranked = flash_rerank_chunks("go", [false_hit, real], top_k=2)
+    assert reranked[0].document_id == "go"
+
+
+def test_flash_rerank_matches_simple_word_forms():
+    plural = _chunk("plural", "Uploaded files are searched by owner before any other filter is applied to them.")
+    other = _chunk("other", "The dashboard shows totals for documents and conversations across the workspace.")
+    assert flash_rerank_chunks("search file", [other, plural], top_k=2)[0].document_id == "plural"
+
+
+def test_flash_rerank_scores_stay_in_cosine_range():
+    best = _chunk("best", "Reciprocal rank fusion merges reciprocal rank fusion results. " * 3, score=1.0)
+    best.heading = "Reciprocal Rank Fusion"
+    (top,) = flash_rerank_chunks("reciprocal rank fusion", [best], top_k=1)
+    assert 0.0 <= top.score <= 1.0

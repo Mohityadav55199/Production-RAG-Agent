@@ -103,89 +103,34 @@ class BenchmarkSummary:
     section_mrr: float = 0.0
 
 
-_STOPWORDS = {
-    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "aren't",
-    "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "can",
-    "cannot", "could", "couldn't", "did", "didn't", "do", "does", "doesn't", "doing", "don't", "down",
-    "during", "each", "few", "for", "from", "further", "had", "hadn't", "has", "hasn't", "have", "haven't",
-    "having", "he", "her", "here", "hers", "herself", "him", "himself", "his", "how", "i", "if", "in",
-    "into", "is", "isn't", "it", "its", "itself", "let's", "me", "more", "most", "mustn't", "my", "myself",
-    "no", "nor", "not", "of", "off", "on", "once", "only", "or", "other", "ought", "our", "ours", "ourselves",
-    "out", "over", "own", "same", "shan't", "she", "should", "shouldn't", "so", "some", "such", "than", "that",
-    "the", "their", "theirs", "them", "themselves", "then", "there", "these", "they", "this", "those",
-    "through", "to", "too", "under", "until", "up", "very", "was", "wasn't", "we", "were", "weren't", "what",
-    "when", "where", "which", "while", "who", "whom", "why", "with", "won't", "would", "wouldn't", "you",
-    "your", "yours", "yourself", "yourselves",
-}
-
-
 def flash_rerank_candidates(
     query: str,
     candidates: list[RetrievedCandidate],
     top_k: int = 5,
 ) -> list[RetrievedCandidate]:
-    """
-    Second-stage flash cross-encoder reranker.
-    Scores candidate chunks using exact token coverage, heading/section alignment,
-    contiguous n-gram phrases, and length penalty.
-    """
-    if not candidates:
-        return []
-    words = re.findall(r"\b[a-zA-Z0-9_\-\.]{2,}\b", query.lower())
-    q_tokens = [w for w in words if w not in _STOPWORDS] or words
-    if not q_tokens:
-        return candidates[:top_k]
+    """Rerank with the production reranker, so the benchmark measures the code that serves users."""
+    from app.services.retrieval_service import RetrievedChunk, flash_rerank_chunks
 
-    reranked = []
-    for c in candidates:
-        text_lower = c.text.lower()
-        heading_lower = (c.heading or "").lower()
-        section_lower = (c.section or "").lower()
-
-        # 1. Exact token coverage
-        matched = sum(1 for t in q_tokens if t in text_lower)
-        token_coverage = matched / len(q_tokens)
-
-        # 2. Heading and section weight (1.25x boost)
-        heading_match = any(t in heading_lower or t in section_lower for t in q_tokens)
-        heading_boost = 1.25 if heading_match else 1.0
-
-        # 3. Contiguous phrase bonus (1.40x boost)
-        phrase_match = False
-        if len(words) >= 2:
-            for i in range(len(words) - 1):
-                bigram = f"{words[i]} {words[i+1]}"
-                if bigram in text_lower:
-                    phrase_match = True
-                    break
-        if not phrase_match and len(words) >= 3:
-            for i in range(len(words) - 2):
-                trigram = f"{words[i]} {words[i+1]} {words[i+2]}"
-                if trigram in text_lower:
-                    phrase_match = True
-                    break
-        phrase_boost = 1.40 if phrase_match else 1.0
-
-        # 4. Length penalty
-        length_factor = min(1.0, max(0.2, len(c.text) / 100.0))
-
-        # Composite score
-        composite_score = (c.score * 0.40 + token_coverage * 0.60) * heading_boost * phrase_boost * length_factor
-        reranked.append(
-            RetrievedCandidate(
-                filename=c.filename,
-                text=c.text,
-                score=composite_score,
-                chunk_index=c.chunk_index,
-                section=c.section,
-                heading=c.heading,
-                char_start=c.char_start,
-                char_end=c.char_end,
-            )
+    chunks = [
+        RetrievedChunk(
+            document_id=str(i), filename=c.filename, page_number=1, chunk_index=c.chunk_index,
+            text=c.text, score=c.score, heading=c.heading, section=c.section, dense_score=c.score,
         )
-
-    reranked.sort(key=lambda x: x.score, reverse=True)
-    return reranked[:top_k]
+        for i, c in enumerate(candidates)
+    ]
+    return [
+        RetrievedCandidate(
+            filename=candidates[int(r.document_id)].filename,
+            text=r.text,
+            score=r.score,
+            chunk_index=r.chunk_index,
+            section=r.section,
+            heading=r.heading,
+            char_start=candidates[int(r.document_id)].char_start,
+            char_end=candidates[int(r.document_id)].char_end,
+        )
+        for r in flash_rerank_chunks(query, chunks, top_k=top_k)
+    ]
 
 
 # ── In-Memory Fast Semantic / Lexical Indexer for Offline Tuning ──────────────
