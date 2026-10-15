@@ -500,353 +500,359 @@ export function DraftEditor({ generationId, onChanged, focusOutreach }: DraftEdi
   const aiDraftDiffers = JSON.stringify(draft) !== JSON.stringify(detail.ai_draft);
 
   return (
-    <div className="space-y-6">
-      {/* Score and downloads */}
-      <Card className={cn(detail.below_threshold ? "border-amber-500/40" : "border-emerald-500/40")}>
-        <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <ScoreRing score={detail.ats_score} threshold={detail.threshold} />
-            <div className="min-w-0 flex-1 space-y-2">
-              <CardTitle className="flex items-center gap-2">
-                {detail.below_threshold ? (
-                  <span className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                    <AlertTriangle className="size-5" />
-                    Score {detail.ats_score} is below the {detail.threshold} target
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="size-5" />
-                    Score {detail.ats_score}: at or above the {detail.threshold} target
-                  </span>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {detail.job_title ? `${detail.job_title}${detail.company ? ` at ${detail.company}` : ""}. ` : ""}
-                {detail.below_threshold
-                  ? "You can still download this draft. Improve the score by editing it below, or see what is missing."
-                  : "Edit anything below and re-score to keep the file in sync."}
-              </CardDescription>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" disabled={!detail.pdf_available || dirty} onClick={() => download("pdf")}>
-                  <Download className="size-4" />
-                  {detail.output_name}.pdf
-                </Button>
-                <Button size="sm" variant="outline" disabled={!detail.tex_available || dirty} onClick={() => download("tex")}>
-                  <FileCode2 className="size-4" />
-                  .tex
-                </Button>
-                <Button size="sm" variant={dirty ? "default" : "outline"} disabled={scoring || !dirty} onClick={rescore}>
-                  {scoring ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-                  Re-score
-                </Button>
-                {detail.job && detail.job.status !== "saved" ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 text-xs font-medium capitalize text-emerald-700 dark:text-emerald-400">
-                    <BriefcaseBusiness className="size-3.5" />
-                    {detail.job.status}
-                    {detail.job.applied_date ? ` · ${new Date(detail.job.applied_date).toLocaleDateString()}` : ""}
-                  </span>
-                ) : (
-                  <Button size="sm" variant="outline" disabled={applying} onClick={markAsApplied}>
-                    {applying ? <Loader2 className="size-4 animate-spin" /> : <BriefcaseBusiness className="size-4" />}
-                    Mark as applied
+    // Desktop: the draft on the left; the score and downloads stay in view on the right.
+    // Phone: the score card on top, then the draft.
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <aside className="flex flex-col gap-4 lg:sticky lg:top-20 lg:order-2 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
+        {/* Score and downloads */}
+        <Card className={cn("shrink-0", detail.below_threshold ? "border-amber-500/40" : "border-emerald-500/40")}>
+          <CardHeader>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center lg:flex-col lg:items-start">
+              <ScoreRing score={detail.ats_score} threshold={detail.threshold} />
+              <div className="min-w-0 flex-1 space-y-2">
+                <CardTitle className="flex items-center gap-2">
+                  {detail.below_threshold ? (
+                    <span className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                      <AlertTriangle className="size-5" />
+                      Score {detail.ats_score} is below the {detail.threshold} target
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="size-5" />
+                      Score {detail.ats_score}: at or above the {detail.threshold} target
+                    </span>
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  {detail.job_title ? `${detail.job_title}${detail.company ? ` at ${detail.company}` : ""}. ` : ""}
+                  {detail.below_threshold
+                    ? "You can still download this draft. Improve the score by editing it below, or see what is missing."
+                    : "Edit anything below and re-score to keep the file in sync."}
+                </CardDescription>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" disabled={!detail.pdf_available || dirty} onClick={() => download("pdf")}>
+                    <Download className="size-4" />
+                    {detail.output_name}.pdf
                   </Button>
-                )}
-                {detail.library && (
-                  <Button size="sm" variant={comparing ? "secondary" : "ghost"} onClick={() => setComparing((v) => !v)} aria-expanded={comparing}>
-                    <Columns2 className="size-4" />
-                    {comparing ? "Hide comparison" : "Compare with your original"}
+                  <Button size="sm" variant="outline" disabled={!detail.tex_available || dirty} onClick={() => download("tex")}>
+                    <FileCode2 className="size-4" />
+                    .tex
                   </Button>
-                )}
-                {aiDraftDiffers && (
-                  <Button size="sm" variant="ghost" onClick={() => { setDraft(detail.ai_draft); }}>
-                    <RotateCcw className="size-4" />
-                    Reset to AI draft
+                  <Button size="sm" variant={dirty ? "default" : "outline"} disabled={scoring || !dirty} onClick={rescore}>
+                    {scoring ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                    Re-score
                   </Button>
+                  {detail.job && detail.job.status !== "saved" ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 text-xs font-medium capitalize text-emerald-700 dark:text-emerald-400">
+                      <BriefcaseBusiness className="size-3.5" />
+                      {detail.job.status}
+                      {detail.job.applied_date ? ` · ${new Date(detail.job.applied_date).toLocaleDateString()}` : ""}
+                    </span>
+                  ) : (
+                    <Button size="sm" variant="outline" disabled={applying} onClick={markAsApplied}>
+                      {applying ? <Loader2 className="size-4 animate-spin" /> : <BriefcaseBusiness className="size-4" />}
+                      Mark as applied
+                    </Button>
+                  )}
+                  {detail.library && (
+                    <Button size="sm" variant={comparing ? "secondary" : "ghost"} onClick={() => setComparing((v) => !v)} aria-expanded={comparing}>
+                      <Columns2 className="size-4" />
+                      {comparing ? "Hide comparison" : "Compare with your original"}
+                    </Button>
+                  )}
+                  {aiDraftDiffers && (
+                    <Button size="sm" variant="ghost" onClick={() => { setDraft(detail.ai_draft); }}>
+                      <RotateCcw className="size-4" />
+                      Reset to AI draft
+                    </Button>
+                  )}
+                </div>
+                {dirty && (
+                  <p className="text-xs text-muted-foreground">
+                    You have unsaved changes. Re-score to apply them; downloads reflect the last scored version.
+                  </p>
+                )}
+                {!detail.pdf_available && (
+                  <p className="text-xs text-muted-foreground">
+                    The server could not compile a PDF. Download the .tex and compile it in Overleaf.
+                  </p>
                 )}
               </div>
-              {dirty && (
-                <p className="text-xs text-muted-foreground">
-                  You have unsaved changes. Re-score to apply them; downloads reflect the last scored version.
-                </p>
-              )}
-              {!detail.pdf_available && (
-                <p className="text-xs text-muted-foreground">
-                  The server could not compile a PDF. Download the .tex and compile it in Overleaf.
-                </p>
-              )}
             </div>
-          </div>
-        </CardHeader>
-      </Card>
+          </CardHeader>
+        </Card>
+      </aside>
 
-      {/* Your library next to the tailored draft */}
-      {comparing && detail.library && (
+      <div className="min-w-0 space-y-6 lg:order-1">
+        {/* Your library next to the tailored draft */}
+        {comparing && detail.library && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Your original next to the tailored draft</CardTitle>
+              <CardDescription>
+                Left: your resume as it is in your library. Right: this draft, including edits you haven&apos;t re-scored yet.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CompareView library={detail.library} draft={draft} annotated={annotated} />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Gap report */}
+        {gap && (gap.usable.length > 0 || gap.lacking_must.length > 0 || gap.lacking_nice.length > 0) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">What stands between this draft and a higher score</CardTitle>
+              <CardDescription>
+                Scores here are estimates. Nothing is added for you: these are facts you can use, and gaps only you can close.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              {gap.usable.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-medium">
+                    Your library already covers {gap.usable.length} missing term{gap.usable.length === 1 ? "" : "s"}
+                    <span className="font-normal text-muted-foreground">: adding them could lift the score to about {gap.usable_score}</span>
+                  </p>
+                  {gap.usable.map((u) => (
+                    <div key={u.term} className="flex flex-wrap items-start gap-2 rounded-md bg-muted/40 p-2 sm:flex-nowrap">
+                      <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium">{u.term}</span>
+                      <span className="min-w-0 basis-full text-muted-foreground sm:basis-auto sm:flex-1">
+                        {u.from ? `${u.from.item}: ${u.from.bullet}` : "Mentioned in your library"}
+                      </span>
+                      {u.from && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="ml-auto"
+                          onClick={() => {
+                            if (addFromLibrary(u.from!)) toast.success("Added. Re-score to see the effect.");
+                            else toast.info("That bullet is already there, or its role isn't in this draft.");
+                          }}
+                        >
+                          Add
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(gap.lacking_must.length > 0 || gap.lacking_nice.length > 0) && (
+                <div className="space-y-2">
+                  <p className="font-medium">
+                    Not in your library
+                    <span className="font-normal text-muted-foreground">
+                      : if you gain these skills and add them to a resume, the score could reach about {gap.with_lacking_score}
+                    </span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {gap.lacking_must.map((t) => (
+                      <span key={t} className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium">{t} (required)</span>
+                    ))}
+                    {gap.lacking_nice.map((t) => (
+                      <span key={t} className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium">{t}</span>
+                    ))}
+                  </div>
+                  <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Info className="mt-0.5 size-3.5 shrink-0" />
+                    We never add skills you haven&apos;t shown. If you do have one, put it in a resume in your library and tailor again.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Layout */}
+        <LayoutOptions value={options} onChange={setOptions} disabled={scoring} hint="Single column, plain text. Re-score to apply a change." />
+
+        {/* Summary and skills */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Your original next to the tailored draft</CardTitle>
-            <CardDescription>
-              Left: your resume as it is in your library. Right: this draft, including edits you haven&apos;t re-scored yet.
-            </CardDescription>
+            <CardTitle className="text-base">Summary and skills</CardTitle>
           </CardHeader>
-          <CardContent>
-            <CompareView library={detail.library} draft={draft} annotated={annotated} />
+          <CardContent className="space-y-4">
+            <Textarea
+              value={draft.summary}
+              maxLength={1200}
+              onChange={(e) => patch({ summary: e.target.value })}
+              placeholder="Two sentences about your strongest fit for this job"
+              className="min-h-[80px] text-sm"
+              aria-label="Summary"
+            />
+            {Object.entries(draft.skills).map(([group, items]) => (
+              <label key={group} className="block space-y-1 text-sm">
+                <span className="font-medium">{group}</span>
+                <Input
+                  value={items.join(", ")}
+                  onChange={(e) =>
+                    patch({
+                      skills: {
+                        ...draft.skills,
+                        [group]: e.target.value.split(",").map((s) => s.trimStart()),
+                      },
+                    })
+                  }
+                  onBlur={() =>
+                    patch({
+                      skills: { ...draft.skills, [group]: draft.skills[group].map((s) => s.trim()).filter(Boolean) },
+                    })
+                  }
+                />
+              </label>
+            ))}
+            {annotated && annotated.new_skills.length > 0 && (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Not in your library: {annotated.new_skills.join(", ")}. Keep only what you can speak to in an interview.
+              </p>
+            )}
           </CardContent>
         </Card>
-      )}
 
-      {/* Gap report */}
-      {gap && (gap.usable.length > 0 || gap.lacking_must.length > 0 || gap.lacking_nice.length > 0) && (
+        {/* Experience */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">What stands between this draft and a higher score</CardTitle>
-            <CardDescription>
-              Scores here are estimates. Nothing is added for you: these are facts you can use, and gaps only you can close.
-            </CardDescription>
+            <CardTitle className="text-base">Experience</CardTitle>
+            <CardDescription>Reorder roles, rewrite or reorder bullets, and see where each bullet came from.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            {gap.usable.length > 0 && (
-              <div className="space-y-2">
-                <p className="font-medium">
-                  Your library already covers {gap.usable.length} missing term{gap.usable.length === 1 ? "" : "s"}
-                  <span className="font-normal text-muted-foreground">: adding them could lift the score to about {gap.usable_score}</span>
-                </p>
-                {gap.usable.map((u) => (
-                  <div key={u.term} className="flex flex-wrap items-start gap-2 rounded-md bg-muted/40 p-2 sm:flex-nowrap">
-                    <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium">{u.term}</span>
-                    <span className="min-w-0 basis-full text-muted-foreground sm:basis-auto sm:flex-1">
-                      {u.from ? `${u.from.item}: ${u.from.bullet}` : "Mentioned in your library"}
-                    </span>
-                    {u.from && (
+          <CardContent className="space-y-6">
+            {draft.experience.map((role, i) => {
+              const meta = roleInfo(role.company);
+              return (
+                <section key={`${role.company}-${i}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="break-words font-semibold">{role.company}</p>
+                      <p className="break-words text-sm text-muted-foreground">{[role.title, role.dates].filter(Boolean).join(" · ")}</p>
+                    </div>
+                    <div className="flex shrink-0">
+                      <Button size="icon" variant="ghost" className="size-8" disabled={i === 0} aria-label="Move role up"
+                        onClick={() => patch({ experience: move(draft.experience, i, -1) })}>
+                        <ArrowUp className="size-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="size-8" disabled={i === draft.experience.length - 1} aria-label="Move role down"
+                        onClick={() => patch({ experience: move(draft.experience, i, 1) })}>
+                        <ArrowDown className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <ItemBullets
+                    generationId={generationId}
+                    kind="experience"
+                    name={role.company}
+                    bullets={role.bullets}
+                    infoFor={infoIn(meta?.bullets)}
+                    unused={meta?.unused ?? []}
+                    onChange={(bullets) => setRole(i, bullets)}
+                  />
+                </section>
+              );
+            })}
+          </CardContent>
+        </Card>
+
+        {/* Projects */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Projects</CardTitle>
+            <CardDescription>Drop a project, change the order, or bring back one the writer left out.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {draft.projects.length === 0 && <p className="text-sm text-muted-foreground">No projects in this draft.</p>}
+            {draft.projects.map((proj, i) => {
+              const meta = projectInfo(proj.name);
+              return (
+                <section key={`${proj.name}-${i}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="break-words font-semibold">{proj.name}</p>
+                      {proj.tech && <p className="break-words text-sm text-muted-foreground">{proj.tech}</p>}
+                    </div>
+                    <div className="flex shrink-0">
+                      <Button size="icon" variant="ghost" className="size-8" disabled={i === 0} aria-label="Move project up"
+                        onClick={() => patch({ projects: move(draft.projects, i, -1) })}>
+                        <ArrowUp className="size-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="size-8" disabled={i === draft.projects.length - 1} aria-label="Move project down"
+                        onClick={() => patch({ projects: move(draft.projects, i, 1) })}>
+                        <ArrowDown className="size-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="size-8 text-muted-foreground hover:text-destructive" aria-label={`Remove ${proj.name}`}
+                        onClick={() => patch({ projects: draft.projects.filter((_, j) => j !== i) })}>
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <ItemBullets
+                    generationId={generationId}
+                    kind="project"
+                    name={proj.name}
+                    bullets={proj.bullets}
+                    infoFor={infoIn(meta?.bullets)}
+                    unused={meta?.unused ?? []}
+                    onChange={(bullets) => setProject(i, bullets)}
+                  />
+                </section>
+              );
+            })}
+
+            {annotated && annotated.left_out_projects.length > 0 && (
+              <div className="space-y-2 border-t pt-4">
+                <p className="text-sm font-medium">In your library, not in this draft</p>
+                {annotated.left_out_projects
+                  .filter((p) => !draft.projects.some((d) => d.name === p.name))
+                  .map((p) => (
+                    <div key={p.name} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 p-2 text-sm">
+                      <span className="min-w-0 truncate">{p.name}{p.tech ? ` · ${p.tech}` : ""}</span>
                       <Button
                         size="sm"
                         variant="secondary"
-                        className="ml-auto"
-                        onClick={() => {
-                          if (addFromLibrary(u.from!)) toast.success("Added. Re-score to see the effect.");
-                          else toast.info("That bullet is already there, or its role isn't in this draft.");
-                        }}
+                        disabled={draft.projects.length >= 12}
+                        onClick={() => patch({ projects: [...draft.projects, { name: p.name, tech: p.tech, link: "", bullets: p.bullets.slice(0, 3) }] })}
                       >
+                        <Plus className="size-3.5" />
                         Add
                       </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-            {(gap.lacking_must.length > 0 || gap.lacking_nice.length > 0) && (
-              <div className="space-y-2">
-                <p className="font-medium">
-                  Not in your library
-                  <span className="font-normal text-muted-foreground">
-                    : if you gain these skills and add them to a resume, the score could reach about {gap.with_lacking_score}
-                  </span>
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {gap.lacking_must.map((t) => (
-                    <span key={t} className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium">{t} (required)</span>
+                    </div>
                   ))}
-                  {gap.lacking_nice.map((t) => (
-                    <span key={t} className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium">{t}</span>
-                  ))}
-                </div>
-                <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                  <Info className="mt-0.5 size-3.5 shrink-0" />
-                  We never add skills you haven&apos;t shown. If you do have one, put it in a resume in your library and tailor again.
-                </p>
               </div>
             )}
           </CardContent>
         </Card>
-      )}
 
-      {/* Layout */}
-      <LayoutOptions value={options} onChange={setOptions} disabled={scoring} hint="Single column, plain text. Re-score to apply a change." />
+        {/* Score details and honesty checks */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Score details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ScoreReport report={detail.report} threshold={detail.threshold} />
+            {detail.details.warnings.length > 0 && (
+              <details className="rounded-lg border bg-muted/30 text-sm" open={detail.details.warnings.length <= 3}>
+                <summary className="cursor-pointer px-3 py-2 font-medium">
+                  Honesty checks ({new Set(detail.details.warnings).size})
+                </summary>
+                <ul className="list-disc space-y-1 px-8 pb-3 text-muted-foreground">
+                  {[...new Set(detail.details.warnings)].map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Summary and skills */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Summary and skills</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Textarea
-            value={draft.summary}
-            maxLength={1200}
-            onChange={(e) => patch({ summary: e.target.value })}
-            placeholder="Two sentences about your strongest fit for this job"
-            className="min-h-[80px] text-sm"
-            aria-label="Summary"
+        {/* Cover letter and recruiter message, written from this draft */}
+        <div ref={outreachRef} id="outreach" className="scroll-mt-4">
+          <OutreachPanel
+            key={version}
+            generationId={generationId}
+            company={detail.company ?? undefined}
+            jobTitle={detail.job_title ?? undefined}
+            saved={detail.outreach}
           />
-          {Object.entries(draft.skills).map(([group, items]) => (
-            <label key={group} className="block space-y-1 text-sm">
-              <span className="font-medium">{group}</span>
-              <Input
-                value={items.join(", ")}
-                onChange={(e) =>
-                  patch({
-                    skills: {
-                      ...draft.skills,
-                      [group]: e.target.value.split(",").map((s) => s.trimStart()),
-                    },
-                  })
-                }
-                onBlur={() =>
-                  patch({
-                    skills: { ...draft.skills, [group]: draft.skills[group].map((s) => s.trim()).filter(Boolean) },
-                  })
-                }
-              />
-            </label>
-          ))}
-          {annotated && annotated.new_skills.length > 0 && (
-            <p className="text-xs text-amber-700 dark:text-amber-400">
-              Not in your library: {annotated.new_skills.join(", ")}. Keep only what you can speak to in an interview.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Experience */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Experience</CardTitle>
-          <CardDescription>Reorder roles, rewrite or reorder bullets, and see where each bullet came from.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {draft.experience.map((role, i) => {
-            const meta = roleInfo(role.company);
-            return (
-              <section key={`${role.company}-${i}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="break-words font-semibold">{role.company}</p>
-                    <p className="break-words text-sm text-muted-foreground">{[role.title, role.dates].filter(Boolean).join(" · ")}</p>
-                  </div>
-                  <div className="flex shrink-0">
-                    <Button size="icon" variant="ghost" className="size-8" disabled={i === 0} aria-label="Move role up"
-                      onClick={() => patch({ experience: move(draft.experience, i, -1) })}>
-                      <ArrowUp className="size-4" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="size-8" disabled={i === draft.experience.length - 1} aria-label="Move role down"
-                      onClick={() => patch({ experience: move(draft.experience, i, 1) })}>
-                      <ArrowDown className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-                <ItemBullets
-                  generationId={generationId}
-                  kind="experience"
-                  name={role.company}
-                  bullets={role.bullets}
-                  infoFor={infoIn(meta?.bullets)}
-                  unused={meta?.unused ?? []}
-                  onChange={(bullets) => setRole(i, bullets)}
-                />
-              </section>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      {/* Projects */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Projects</CardTitle>
-          <CardDescription>Drop a project, change the order, or bring back one the writer left out.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {draft.projects.length === 0 && <p className="text-sm text-muted-foreground">No projects in this draft.</p>}
-          {draft.projects.map((proj, i) => {
-            const meta = projectInfo(proj.name);
-            return (
-              <section key={`${proj.name}-${i}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="break-words font-semibold">{proj.name}</p>
-                    {proj.tech && <p className="break-words text-sm text-muted-foreground">{proj.tech}</p>}
-                  </div>
-                  <div className="flex shrink-0">
-                    <Button size="icon" variant="ghost" className="size-8" disabled={i === 0} aria-label="Move project up"
-                      onClick={() => patch({ projects: move(draft.projects, i, -1) })}>
-                      <ArrowUp className="size-4" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="size-8" disabled={i === draft.projects.length - 1} aria-label="Move project down"
-                      onClick={() => patch({ projects: move(draft.projects, i, 1) })}>
-                      <ArrowDown className="size-4" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="size-8 text-muted-foreground hover:text-destructive" aria-label={`Remove ${proj.name}`}
-                      onClick={() => patch({ projects: draft.projects.filter((_, j) => j !== i) })}>
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-                <ItemBullets
-                  generationId={generationId}
-                  kind="project"
-                  name={proj.name}
-                  bullets={proj.bullets}
-                  infoFor={infoIn(meta?.bullets)}
-                  unused={meta?.unused ?? []}
-                  onChange={(bullets) => setProject(i, bullets)}
-                />
-              </section>
-            );
-          })}
-
-          {annotated && annotated.left_out_projects.length > 0 && (
-            <div className="space-y-2 border-t pt-4">
-              <p className="text-sm font-medium">In your library, not in this draft</p>
-              {annotated.left_out_projects
-                .filter((p) => !draft.projects.some((d) => d.name === p.name))
-                .map((p) => (
-                  <div key={p.name} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 p-2 text-sm">
-                    <span className="min-w-0 truncate">{p.name}{p.tech ? ` · ${p.tech}` : ""}</span>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={draft.projects.length >= 12}
-                      onClick={() => patch({ projects: [...draft.projects, { name: p.name, tech: p.tech, link: "", bullets: p.bullets.slice(0, 3) }] })}
-                    >
-                      <Plus className="size-3.5" />
-                      Add
-                    </Button>
-                  </div>
-                ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Score details and honesty checks */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Score details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <ScoreReport report={detail.report} threshold={detail.threshold} />
-          {detail.details.warnings.length > 0 && (
-            <details className="rounded-lg border bg-muted/30 text-sm" open={detail.details.warnings.length <= 3}>
-              <summary className="cursor-pointer px-3 py-2 font-medium">
-                Honesty checks ({new Set(detail.details.warnings).size})
-              </summary>
-              <ul className="list-disc space-y-1 px-8 pb-3 text-muted-foreground">
-                {[...new Set(detail.details.warnings)].map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Cover letter and recruiter message, written from this draft */}
-      <div ref={outreachRef} id="outreach" className="scroll-mt-4">
-        <OutreachPanel
-          key={version}
-          generationId={generationId}
-          company={detail.company ?? undefined}
-          jobTitle={detail.job_title ?? undefined}
-          saved={detail.outreach}
-        />
+        </div>
       </div>
     </div>
   );
