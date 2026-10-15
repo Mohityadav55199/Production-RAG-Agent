@@ -120,10 +120,11 @@ export function saveLayout(name: string, options: RenderOptions): Promise<SavedL
   });
 }
 
-/** Make a layout from your own resume: a .tex (its template) or a .pdf (its look). */
-export function importLayout(file: File, name = ""): Promise<SavedLayout> {
+/** Make a layout from your own resume: a .tex (its template), a .pdf (its look), or pasted LaTeX code. */
+export function importLayout(file?: File | null, name = "", latexText?: string): Promise<SavedLayout> {
   const form = new FormData();
-  form.append("file", file);
+  if (file) form.append("file", file);
+  if (latexText) form.append("latex_text", latexText);
   if (name) form.append("name", name);
   return apiFetch<SavedLayout>("/resume/layouts/import", { method: "POST", body: form, timeout: 120000 });
 }

@@ -14,6 +14,7 @@ import {
 } from "@/lib/api/resume";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
@@ -56,6 +57,9 @@ export function LayoutOptions({ value, onChange, disabled, hint }: LayoutOptions
   const [importing, setImporting] = useState(false);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
+  const [pastingLatex, setPastingLatex] = useState(false);
+  const [latexCode, setLatexCode] = useState("");
+  const [latexName, setLatexName] = useState("");
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -93,6 +97,24 @@ export function LayoutOptions({ value, onChange, disabled, hint }: LayoutOptions
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const onPasteLatexSubmit = async () => {
+    if (!latexCode.trim()) return;
+    setImporting(true);
+    try {
+      const layout = await importLayout(null, latexName.trim() || "Pasted LaTeX layout", latexCode.trim());
+      setLayouts((prev) => [layout, ...prev]);
+      apply(layout);
+      setPastingLatex(false);
+      setLatexCode("");
+      setLatexName("");
+      toast.success(`Layout "${layout.name}" created`, { description: layout.notes?.join(" · ") });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not import that LaTeX code");
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -165,18 +187,55 @@ export function LayoutOptions({ value, onChange, disabled, hint }: LayoutOptions
                 />
                 <Button size="sm" variant="outline" disabled={disabled || importing} onClick={() => fileRef.current?.click()}>
                   {importing ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-                  Use my resume&apos;s format
+                  Upload .tex/.pdf
+                </Button>
+                <Button size="sm" variant="outline" disabled={disabled || importing} onClick={() => setPastingLatex((v) => !v)}>
+                  <FileCode2 className="size-3.5" />
+                  Paste LaTeX
                 </Button>
                 <Button size="sm" variant="ghost" disabled={disabled} onClick={() => setNaming((v) => !v)}>
                   <Save className="size-3.5" />
-                  Save this layout
+                  Save layout
                 </Button>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Upload a <strong>.tex</strong> resume to use its LaTeX template, or a <strong>.pdf</strong> to copy its font,
+              Paste or upload a <strong>.tex</strong> resume to use its LaTeX template, or upload a <strong>.pdf</strong> to copy its font,
               margins and section order. Your content is never taken from these files.
             </p>
+
+            {pastingLatex && (
+              <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold">Paste LaTeX template or preamble</span>
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setPastingLatex(false)}>
+                    Cancel
+                  </Button>
+                </div>
+                <Input
+                  value={latexName}
+                  onChange={(e) => setLatexName(e.target.value)}
+                  maxLength={80}
+                  placeholder="Template name, e.g. Overleaf Modern"
+                  className="h-8 text-xs"
+                />
+                <Textarea
+                  value={latexCode}
+                  onChange={(e) => setLatexCode(e.target.value)}
+                  placeholder={`\\documentclass[11pt,a4paper]{article}\n\\usepackage{geometry}\n% Paste your full LaTeX resume or preamble here...`}
+                  className="max-h-[260px] min-h-[140px] overflow-y-auto font-mono text-xs leading-relaxed"
+                />
+                <Button
+                  size="sm"
+                  className="h-8 w-full text-xs"
+                  disabled={importing || latexCode.trim().length < 40}
+                  onClick={onPasteLatexSubmit}
+                >
+                  {importing ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <FileCode2 className="mr-1.5 size-3.5" />}
+                  Import LaTeX template
+                </Button>
+              </div>
+            )}
 
             {naming && (
               <form

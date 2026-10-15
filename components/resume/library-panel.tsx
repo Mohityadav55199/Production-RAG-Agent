@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, FileText, Loader2, Plus, Trash2, TriangleAlert, Upload } from "lucide-react";
+import { CheckCircle2, FileCode2, FileText, Loader2, Plus, Trash2, TriangleAlert, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { addResume, deleteResume, listResumes, type ResumeSummary } from "@/lib/api/resume";
+import { addResume, deleteResume, importLayout, listResumes, type ResumeSummary } from "@/lib/api/resume";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -71,16 +71,26 @@ interface LibraryPanelProps {
 export function LibraryPanel({ resumes, loading, onChanged }: LibraryPanelProps) {
   const { confirm, dialog } = useConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [mode, setMode] = useState<"file" | "text">("file");
+  const [mode, setMode] = useState<"file" | "text" | "latex">("file");
   const [label, setLabel] = useState("");
   const [text, setText] = useState("");
+  const [saveAsTemplate, setSaveAsTemplate] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const submit = async (input: { file?: File; text?: string }) => {
+  const submit = async (input: { file?: File; text?: string; isLatex?: boolean }) => {
     setBusy(true);
     try {
-      const added = await addResume({ ...input, label: label.trim() || undefined });
-      toast.success(`Added "${added.label}". Indexing it for search…`);
+      const added = await addResume({ ...input, label: label.trim() || (input.isLatex ? "LaTeX base resume" : undefined) });
+      let extraMsg = "";
+      if (input.isLatex && saveAsTemplate && input.text) {
+        try {
+          await importLayout(null, label.trim() || "LaTeX Template", input.text);
+          extraMsg = " & layout template saved";
+        } catch {
+          // non-fatal: the resume was still indexed into the library
+        }
+      }
+      toast.success(`Added "${added.label}"${extraMsg}. Indexing it for search…`);
       setLabel("");
       setText("");
       onChanged();
@@ -112,17 +122,18 @@ export function LibraryPanel({ resumes, loading, onChanged }: LibraryPanelProps)
     <div className="grid gap-6 lg:grid-cols-5">
       <Card className="lg:col-span-2">
         <CardHeader>
-          <CardTitle>Add a resume</CardTitle>
+          <CardTitle>Add a base resume</CardTitle>
           <CardDescription>
-            Add every resume you have. The tailoring agent searches all of them and only uses facts found here.
+            Add your base resumes (PDF, DOCX, or raw LaTeX). The agent extracts your real facts and only writes what you support.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="inline-flex rounded-lg border p-0.5">
+          <div className="grid grid-cols-3 rounded-lg border p-0.5">
             {(
               [
                 { id: "file", label: "Upload file", icon: Upload },
                 { id: "text", label: "Paste text", icon: FileText },
+                { id: "latex", label: "Paste LaTeX", icon: FileCode2 },
               ] as const
             ).map(({ id, label: l, icon: Icon }) => (
               <button
@@ -131,8 +142,8 @@ export function LibraryPanel({ resumes, loading, onChanged }: LibraryPanelProps)
                 disabled={busy}
                 onClick={() => setMode(id)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  mode === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  "flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                  mode === id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Icon className="size-3.5" />
@@ -144,7 +155,11 @@ export function LibraryPanel({ resumes, loading, onChanged }: LibraryPanelProps)
           <Input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="Label (optional), e.g. Backend resume 2026"
+            placeholder={
+              mode === "latex"
+                ? "Label (optional), e.g. Overleaf LaTeX Resume"
+                : "Label (optional), e.g. Backend resume 2026"
+            }
             disabled={busy}
           />
 
@@ -162,12 +177,58 @@ export function LibraryPanel({ resumes, loading, onChanged }: LibraryPanelProps)
                 {busy ? "Reading your resume…" : "Choose PDF, DOCX, TXT or LaTeX"}
               </Button>
             </>
+          ) : mode === "latex" ? (
+            <>
+              <div className="space-y-1.5">
+                <Textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder={`\\documentclass[letterpaper,11pt]{article}\n\\usepackage{latexsym}\n\\begin{document}\n% Paste your full LaTeX resume here...\n\\section{Experience}\n\\end{document}`}
+                  className="min-h-[220px] max-h-[380px] resize-y overflow-y-auto font-mono text-xs leading-relaxed"
+                  disabled={busy}
+                />
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span>
+                    {text.includes("\\documentclass") || text.includes("\\begin{document}") || text.includes("\\section") ? (
+                      <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="size-3" /> LaTeX syntax recognized
+                      </span>
+                    ) : (
+                      "Paste \\documentclass or standard LaTeX code"
+                    )}
+                  </span>
+                  {text.trim().length > 0 && <span>{text.trim().length.toLocaleString()} chars</span>}
+                </div>
+              </div>
+
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-muted/30 p-2.5 text-xs">
+                <input
+                  type="checkbox"
+                  checked={saveAsTemplate}
+                  onChange={(e) => setSaveAsTemplate(e.target.checked)}
+                  disabled={busy}
+                  className="mt-0.5 rounded border-muted-foreground"
+                />
+                <span className="text-muted-foreground">
+                  Also save as a <strong>LaTeX layout template</strong> (uses your styling for new resumes).
+                </span>
+              </label>
+
+              <Button
+                className="w-full"
+                disabled={busy || text.trim().length < 80}
+                onClick={() => submit({ text, isLatex: true })}
+              >
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <FileCode2 className="size-4" />}
+                {busy ? "Parsing LaTeX resume…" : "Add base LaTeX resume"}
+              </Button>
+            </>
           ) : (
             <>
               <Textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Paste your resume text (or LaTeX source) here…"
+                placeholder="Paste your plain resume text here…"
                 className="min-h-[180px] text-sm"
                 disabled={busy}
               />
@@ -185,7 +246,7 @@ export function LibraryPanel({ resumes, loading, onChanged }: LibraryPanelProps)
         <CardHeader>
           <CardTitle>Your library</CardTitle>
           <CardDescription>
-            {resumes.length} resume{resumes.length === 1 ? "" : "s"} available to the agent
+            {resumes.length} base resume{resumes.length === 1 ? "" : "s"} available to the agent
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -196,7 +257,14 @@ export function LibraryPanel({ resumes, loading, onChanged }: LibraryPanelProps)
           {resumes.map((r) => (
             <div key={r.id} className="flex items-start justify-between gap-3 rounded-xl border p-4">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{r.label}</p>
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-semibold">{r.label}</p>
+                  {r.file_type === "tex" && (
+                    <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider text-primary">
+                      LaTeX
+                    </span>
+                  )}
+                </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {r.name || "Name not found"} · {r.counts.experience} roles · {r.counts.projects} projects ·{" "}
                   {r.counts.skills} skills

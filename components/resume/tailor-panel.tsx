@@ -372,9 +372,9 @@ export function TailorPanel({ resumes, onGoToLibrary, onFinished, onOpenEditor }
             <CardContent className="space-y-4">
               {noLibrary && (
                 <div className="flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
-                  <span>Library empty. Add a resume first.</span>
+                  <span>Library empty. Add your base resume (PDF, DOCX, or LaTeX) first.</span>
                   <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onGoToLibrary}>
-                    Add resumes
+                    Add base resume
                   </Button>
                 </div>
               )}

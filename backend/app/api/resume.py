@@ -121,7 +121,10 @@ async def add_resume(
             content, filename = await _read_upload(file)
             raw_text, file_type = library.extract_text(content, filename)
         else:
-            raw_text, file_type, filename = text.strip(), "text", None
+            raw_text = text.strip()
+            is_latex = "\\documentclass" in raw_text or "\\begin{" in raw_text or "\\section" in raw_text
+            file_type = "tex" if is_latex else "text"
+            filename = "resume.tex" if is_latex else None
         profile = await library.build_profile(raw_text)
     except HTTPException:
         raise
@@ -134,7 +137,7 @@ async def add_resume(
     row = Resume(
         id=uuid.uuid4(),
         user_id=user.key,
-        label=(label or "").strip()[:200] or (filename or profile.name or "Pasted resume"),
+        label=(label or "").strip()[:200] or (filename or profile.name or ("LaTeX resume" if file_type == "tex" else "Pasted resume")),
         source_filename=filename,
         file_type=file_type,
         raw_text=raw_text,
@@ -584,7 +587,8 @@ async def save_layout(body: LayoutCreate, user: CurrentUser = Depends(get_curren
 @router.post("/layouts/import", status_code=status.HTTP_201_CREATED,
              summary="Create a layout from your own resume: a .tex (its template) or a .pdf (its look)")
 async def import_layout(
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    latex_text: str | None = Form(None),
     name: str = Form("", max_length=80),
     user: CurrentUser = Depends(get_current_user),
 ) -> dict:
@@ -593,11 +597,23 @@ async def import_layout(
 
     if await _count_layouts(user.key) >= 20:
         raise HTTPException(status.HTTP_409_CONFLICT, "You can keep up to 20 layouts. Delete one first.")
-    content = await file.read(MAX_TEMPLATE_BYTES + 1)
-    if len(content) > MAX_TEMPLATE_BYTES:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "The file is too large (2 MB at most).")
-    filename = (file.filename or "").lower()
-    label = name.strip() or (file.filename or "My layout").rsplit(".", 1)[0][:80]
+
+    if file is None and not (latex_text and latex_text.strip()):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Upload a .tex/.pdf file or paste your LaTeX code.")
+
+    if file is not None:
+        content = await file.read(MAX_TEMPLATE_BYTES + 1)
+        if len(content) > MAX_TEMPLATE_BYTES:
+            raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "The file is too large (2 MB at most).")
+        filename = (file.filename or "").lower()
+        label = name.strip() or (file.filename or "My layout").rsplit(".", 1)[0][:80]
+    else:
+        content = (latex_text or "").strip().encode("utf-8")
+        if len(content) > MAX_TEMPLATE_BYTES:
+            raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "The LaTeX code is too large (2 MB at most).")
+        filename = "pasted_template.tex"
+        label = name.strip() or "Pasted LaTeX layout"
+
     notes: list[str] = []
 
     if filename.endswith(".tex"):
