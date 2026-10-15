@@ -12,23 +12,10 @@ services:
         value: production
       - key: LOG_LEVEL
         value: INFO
+      # Only the API keys are needed. Models and the fallback chain (gpt-oss-120b -> gpt-oss-20b -> gemini-2.5-flash)
+      # are built into the code, which also replaces retired model names left in the environment.
       - key: GROQ_API_KEY
         sync: false
-      - key: PRIMARY_LLM_PROVIDER
-        value: groq
-      # Groq retired llama-3.3-70b-versatile / llama-3.1-8b-instant on free and developer tiers (16 Aug 2026)
-      - key: PRIMARY_LLM_MODEL
-        value: openai/gpt-oss-120b
-      - key: GROQ_REASONING_EFFORT
-        value: low
-      - key: QUERY_REWRITE_MODEL
-        value: openai/gpt-oss-20b
-      - key: ENABLE_LLM_FALLBACK
-        value: "true"
-      - key: FALLBACK_LLM_PROVIDER
-        value: groq
-      - key: FALLBACK_LLM_MODELS
-        value: openai/gpt-oss-20b, gemini:gemini-2.5-flash
       - key: GOOGLE_API_KEY
         sync: false
       - key: GEMINI_EMBEDDING_MODEL

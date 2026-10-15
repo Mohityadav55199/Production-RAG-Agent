@@ -17,7 +17,7 @@ import asyncio
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from app.config import get_settings
-from app.services.llm_factory import build_chat_model
+from app.services.llm_factory import get_rewrite_llm
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -33,22 +33,6 @@ conversation only to replace references such as "it", "that", "the other one" \
 or to restore a dropped topic. Keep every concrete term from the question. \
 If the question already makes sense on its own, return it unchanged. \
 Do not answer it. Output only the query, on a single line."""
-
-
-def _rewrite_model():
-    """A small, non-streaming model: this call must not leak tokens into the answer stream."""
-    settings = get_settings()
-    if settings.GROQ_API_KEY:
-        return build_chat_model(
-            "groq", settings.QUERY_REWRITE_MODEL, settings.GROQ_API_KEY,
-            temperature=0.0, streaming=False, disable_streaming=True,
-        )
-    if settings.GOOGLE_API_KEY:
-        return build_chat_model(
-            "gemini", settings.GEMINI_MODEL or "gemini-2.5-flash", settings.GOOGLE_API_KEY,
-            temperature=0.0, streaming=False, disable_streaming=True,
-        )
-    return None
 
 
 def _render_history(history: list[BaseMessage]) -> str:
@@ -77,7 +61,7 @@ async def condense_question(query: str, history: list[BaseMessage]) -> str:
     if not history or not get_settings().QUERY_REWRITE_ENABLED:
         return query
     try:
-        llm = _rewrite_model()
+        llm = get_rewrite_llm()
         if llm is None:
             return query
         messages = [

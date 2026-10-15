@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # ── LLM Configuration (Configurable, No hardcoding) ────────────────────────
     PRIMARY_LLM_PROVIDER: str = "groq"       # "groq" | "gemini" | "auto"
-    # Groq retired llama-3.3-70b-versatile and llama-3.1-8b-instant on its free/developer tiers (16 Aug 2026)
+    # Retired model names (e.g. a stale llama-3.3-70b-versatile) are replaced automatically; see llm_factory
     PRIMARY_LLM_MODEL: str = "openai/gpt-oss-120b"
     LLM_TEMPERATURE: float = 0.1
     LLM_PROVIDER: str = "auto"
@@ -32,9 +32,10 @@ class Settings(BaseSettings):
     # ── Fallback LLM Configuration ─────────────────────────────────────────────
     ENABLE_LLM_FALLBACK: bool = True
     FALLBACK_LLM_PROVIDER: str = "groq"       # default fallback provider: "groq" | "gemini"
-    # comma-separated chain of fallbacks; "provider:model" picks another provider (skipped without its key)
-    FALLBACK_LLM_MODELS: str = "openai/gpt-oss-20b, gemini:gemini-2.5-flash"
-    FALLBACK_LLM_MODEL: str = "openai/gpt-oss-20b"
+    # Optional EXTRA fallbacks tried before the built-in chain (gpt-oss-120b -> gpt-oss-20b -> gemini-2.5-flash),
+    # which is always used; leave empty. "provider:model" picks another provider.
+    FALLBACK_LLM_MODELS: str = ""
+    FALLBACK_LLM_MODEL: str = ""
     FALLBACK_LLM_TEMPERATURE: float = 0.1
 
     # ── Provider Specific Keys & Models ────────────────────────────────────────

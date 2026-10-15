@@ -27,13 +27,13 @@ class _FakeLLM:
 
 
 def test_without_history_the_question_is_untouched(monkeypatch):
-    monkeypatch.setattr(query_rewriter, "_rewrite_model", lambda: pytest.fail("no model call expected"))
+    monkeypatch.setattr(query_rewriter, "get_rewrite_llm", lambda: pytest.fail("no model call expected"))
     assert _run(condense_question("What about the frontend?", [])) == "What about the frontend?"
 
 
 def test_follow_up_is_rewritten_using_recent_history(monkeypatch):
     llm = _FakeLLM(reply="Where is the frontend hosted?")
-    monkeypatch.setattr(query_rewriter, "_rewrite_model", lambda: llm)
+    monkeypatch.setattr(query_rewriter, "get_rewrite_llm", lambda: llm)
     assert _run(condense_question("What about the frontend?", HISTORY)) == "Where is the frontend hosted?"
     prompt = llm.seen[1].content
     assert "Where is the backend hosted?" in prompt and "What about the frontend?" in prompt
@@ -41,7 +41,7 @@ def test_follow_up_is_rewritten_using_recent_history(monkeypatch):
 
 @pytest.mark.parametrize("llm", [None, _FakeLLM(error=RuntimeError("429")), _FakeLLM(reply="  ")])
 def test_failures_fall_back_to_the_original_question(monkeypatch, llm):
-    monkeypatch.setattr(query_rewriter, "_rewrite_model", lambda: llm)
+    monkeypatch.setattr(query_rewriter, "get_rewrite_llm", lambda: llm)
     assert _run(condense_question("What about the frontend?", HISTORY)) == "What about the frontend?"
 
 

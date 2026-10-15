@@ -84,10 +84,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.exception("Could not recover pending resume indexing")
 
+    # ── Startup: learn which Groq models exist, so retired ones are skipped (refreshed every 6 h) ──
+    import asyncio
+
+    from app.services.llm_factory import keep_groq_models_fresh
+    model_refresh = asyncio.create_task(keep_groq_models_fresh())
+
     yield
 
     # ── Shutdown ──────────────────────────────────────────────────────────────
     logger.info("Shutting down — releasing resources …")
+    model_refresh.cancel()
     await dispose_engine()
     await close_qdrant_client()
     logger.info("Shutdown complete")

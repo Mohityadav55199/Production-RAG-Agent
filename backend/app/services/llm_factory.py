@@ -1,14 +1,22 @@
 """
 LLM Factory & Resilient Fallback Orchestrator.
 
-Provides dynamic, non-hardcoded chat model creation supporting multiple providers
-(Groq, Google Gemini) with automatic graceful fallback when the primary provider
-hits rate limits (429), timeouts, or service disruptions.
+Builds chat models for Groq and Google Gemini and chains them so a request still gets an answer when
+a model is rate limited, down, or retired. The chain is built in; no environment variable is needed:
+
+  1. the configured primary model (PRIMARY_LLM_MODEL / GROQ_MODEL / GEMINI_MODEL, or the built-in default),
+  2. any extra FALLBACK_LLM_MODELS (optional),
+  3. BUILT_IN_CHAIN, always appended.
+
+Model names Groq or Google have retired are replaced with their successors (RETIRED_MODELS), and Groq
+models missing from Groq's live model list (refreshed at startup and every few hours) are skipped, so a
+stale value left in the deployment's environment cannot break chat. A provider without an API key is
+skipped. Any error from one model moves on to the next.
 """
 
 from __future__ import annotations
 
-import logging
+import asyncio
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -22,8 +30,49 @@ logger = get_logger(__name__)
 # Groq models that accept ``reasoning_effort`` (other models reject the parameter)
 _REASONING_MODEL_PREFIXES = ("openai/gpt-oss",)
 
-# Used only when FALLBACK_LLM_MODELS yields nothing usable
-_EMERGENCY_GROQ_FALLBACKS = ("openai/gpt-oss-20b", "openai/gpt-oss-120b")
+# Always tried, in this order, after the configured primary model and any FALLBACK_LLM_MODELS
+BUILT_IN_CHAIN: tuple[tuple[str, str], ...] = (
+    ("groq", "openai/gpt-oss-120b"),
+    ("groq", "openai/gpt-oss-20b"),
+    ("gemini", "gemini-2.5-flash"),
+)
+
+# The small, fast models used to rewrite follow-up questions (QUERY_REWRITE_MODEL goes first)
+BUILT_IN_REWRITE_CHAIN: tuple[tuple[str, str], ...] = (
+    ("groq", "openai/gpt-oss-20b"),
+    ("groq", "openai/gpt-oss-120b"),
+    ("gemini", "gemini-2.5-flash"),
+)
+
+# Image requests: Gemini only (GEMINI_MODEL goes first)
+BUILT_IN_VISION_CHAIN: tuple[tuple[str, str], ...] = (
+    ("gemini", "gemini-2.5-flash"),
+    ("gemini", "gemini-2.5-flash-lite"),
+)
+
+# Shut-down models and their successors. A deployment whose environment still names one keeps working.
+RETIRED_MODELS: dict[str, str] = {
+    # Groq: free and developer tiers, 16 Aug 2026
+    "llama-3.3-70b-versatile": "openai/gpt-oss-120b",
+    "llama-3.1-8b-instant": "openai/gpt-oss-20b",
+    # Groq: 17 Jul 2026
+    "qwen/qwen3-32b": "openai/gpt-oss-120b",
+    "meta-llama/llama-4-scout-17b-16e-instruct": "openai/gpt-oss-120b",
+    # Groq: earlier retirements
+    "llama3-70b-8192": "openai/gpt-oss-120b",
+    "llama3-8b-8192": "openai/gpt-oss-20b",
+    "mixtral-8x7b-32768": "openai/gpt-oss-120b",
+    "gemma2-9b-it": "openai/gpt-oss-20b",
+    # Google
+    "gemini-1.5-flash": "gemini-2.5-flash",
+    "gemini-1.5-pro": "gemini-2.5-flash",
+}
+
+_PROVIDER_ALIASES = {"google": "gemini", "google-genai": "gemini"}
+
+# Groq's live model ids; None until fetched (then nothing is filtered out)
+_groq_models: set[str] | None = None
+_warned: set[str] = set()
 
 
 def _is_reasoning_model(model_name: str) -> bool:
@@ -79,139 +128,184 @@ def build_chat_model(
         raise ValueError(f"Unsupported LLM provider: {provider!r}. Supported: 'groq', 'gemini'.")
 
 
+def _warn_once(key: str, message: str, *args) -> None:
+    if key not in _warned:
+        _warned.add(key)
+        logger.warning(message, *args)
+
+
+def resolve_model(provider: str, model: str) -> str:
+    """The model to call for *model*: its successor if it has been retired."""
+    replacement = RETIRED_MODELS.get(model)
+    if replacement:
+        _warn_once(
+            f"retired:{model}",
+            "Model %s has been retired by %s; using %s instead. Remove it from the environment.",
+            model, provider, replacement,
+        )
+        return replacement
+    return model
+
+
+def _groq_client(api_key: str):
+    from groq import AsyncGroq
+
+    return AsyncGroq(api_key=api_key, timeout=10.0)
+
+
+async def refresh_groq_models() -> None:
+    """Fetch the ids of the models Groq currently serves. Failures keep the previous list."""
+    global _groq_models
+    key = get_settings().GROQ_API_KEY
+    if not key:
+        return
+    try:
+        listing = await asyncio.wait_for(_groq_client(key).models.list(), timeout=15)
+        ids = {m.id for m in listing.data if getattr(m, "active", True)}
+        if ids:
+            _groq_models = ids
+            logger.info("Groq serves %d models", len(ids))
+    except Exception as exc:  # noqa: BLE001 - the chain still falls back at request time
+        logger.warning("Could not fetch Groq's model list: %s", exc)
+
+
+async def keep_groq_models_fresh(interval_seconds: float = 6 * 3600) -> None:
+    """Background task: refresh Groq's model list now and then every few hours."""
+    while True:
+        await refresh_groq_models()
+        await asyncio.sleep(interval_seconds)
+
+
+def _api_key(provider: str) -> str:
+    s = get_settings()
+    return s.GROQ_API_KEY if provider == "groq" else s.GOOGLE_API_KEY
+
+
+def _usable(provider: str, model: str) -> bool:
+    if not _api_key(provider):
+        return False
+    if provider == "groq" and _groq_models is not None and model not in _groq_models:
+        _warn_once(f"missing:{model}", "Groq does not serve %s any more; skipping it", model)
+        return False
+    return True
+
+
+def _parse_entry(entry: str, default_provider: str) -> tuple[str, str] | None:
+    """'provider:model' or 'model' (with the default provider). Model ids may contain '/'."""
+    entry = entry.strip()
+    if not entry:
+        return None
+    prov, sep, mod = entry.partition(":")
+    if sep and prov.strip().lower() in ("groq", "gemini", *_PROVIDER_ALIASES):
+        return _normalise_provider(prov), mod.strip()
+    return default_provider, entry
+
+
+def _normalise_provider(provider: str) -> str:
+    p = (provider or "").strip().lower()
+    return _PROVIDER_ALIASES.get(p, p)
+
+
+def model_chain(
+    primary: tuple[str, str] | None,
+    extra: list[tuple[str, str]],
+    built_in: tuple[tuple[str, str], ...],
+) -> list[tuple[str, str]]:
+    """Primary, then extras, then the built-in chain: retired names replaced, unusable and repeated ones dropped."""
+    chain: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for provider, model in ([primary] if primary else []) + extra + list(built_in):
+        provider = _normalise_provider(provider)
+        model = resolve_model(provider, model)
+        if provider not in ("groq", "gemini") or not model or model in seen:
+            continue
+        seen.add(model)
+        if _usable(provider, model):
+            chain.append((provider, model))
+    return chain
+
+
+def _primary_choice(requested_provider: str | None, requested_model: str | None) -> tuple[str, str] | None:
+    s = get_settings()
+    provider = _normalise_provider(requested_provider or s.PRIMARY_LLM_PROVIDER or "auto")
+    if provider not in ("groq", "gemini"):  # "auto" or anything unknown
+        provider = "groq" if s.GROQ_API_KEY else "gemini"
+    configured = s.PRIMARY_LLM_MODEL if _normalise_provider(s.PRIMARY_LLM_PROVIDER) == provider else ""
+    per_provider = s.GROQ_MODEL if provider == "groq" else s.GEMINI_MODEL
+    model = requested_model or configured or per_provider
+    return (provider, model) if model else None
+
+
+def _chain_llm(
+    chain: list[tuple[str, str]],
+    temperature: float,
+    streaming: bool,
+    tag_fallbacks: bool,
+) -> BaseChatModel:
+    if not chain:
+        raise ValueError(
+            "No language model is available: set GROQ_API_KEY or GOOGLE_API_KEY on the server."
+        )
+    runnables = []
+    for i, (provider, model) in enumerate(chain):
+        is_fallback = tag_fallbacks and i > 0
+        runnables.append(
+            build_chat_model(
+                provider=provider,
+                model_name=model,
+                api_key=_api_key(provider),
+                temperature=temperature,
+                streaming=streaming,
+                disable_streaming=not streaming,
+            ).with_config(
+                tags=["fallback_llm" if is_fallback else "primary_llm", f"model:{model}"],
+                metadata={"is_fallback": is_fallback, "model": model, "provider": provider},
+            )
+        )
+    if len(runnables) == 1:
+        return runnables[0]
+    return runnables[0].with_fallbacks(runnables[1:])
+
+
 def get_configured_llm(
     requested_provider: str | None = None,
     requested_model: str | None = None,
 ) -> BaseChatModel:
     """
-    Build the active LLM with automatic fallback support.
+    The answering model: the configured (or requested) primary, chained with fallbacks.
 
-    Configuration resolution:
-      1. If provider/model is explicitly requested, use that as primary.
-      2. Otherwise, check PRIMARY_LLM_PROVIDER and PRIMARY_LLM_MODEL from config.
-      3. If primary provider key is not available, auto-detect available keys.
-      4. If ENABLE_LLM_FALLBACK is true and a fallback model can be configured,
-         chain it using `.with_fallbacks([fallback_llm])`.
+    Works with no model settings at all; see the module docstring for how the chain is built.
     """
     settings = get_settings()
+    primary = _primary_choice(requested_provider, requested_model)
+    extra: list[tuple[str, str]] = []
+    built_in: tuple[tuple[str, str], ...] = ()
+    if settings.ENABLE_LLM_FALLBACK:
+        default_provider = _normalise_provider(settings.FALLBACK_LLM_PROVIDER) or "groq"
+        raw = settings.FALLBACK_LLM_MODELS or settings.FALLBACK_LLM_MODEL or ""
+        extra = [e for e in (_parse_entry(x, default_provider) for x in raw.split(",")) if e]
+        built_in = BUILT_IN_CHAIN
+    chain = model_chain(primary, extra, built_in)
+    if not settings.ENABLE_LLM_FALLBACK and not chain:
+        chain = model_chain(None, [], BUILT_IN_CHAIN)[:1]   # the primary is unusable: still answer
+    logger.debug("LLM chain: %s", " -> ".join(f"{p}:{m}" for p, m in chain))
+    return _chain_llm(chain, settings.LLM_TEMPERATURE, streaming=True, tag_fallbacks=True)
 
-    # Determine primary provider & model
-    primary_provider = (requested_provider or settings.PRIMARY_LLM_PROVIDER or "auto").lower()
-    if primary_provider == "auto":
-        primary_provider = "groq" if settings.GROQ_API_KEY else "gemini"
 
-    # PRIMARY_LLM_MODEL names the model of PRIMARY_LLM_PROVIDER; the per-provider settings cover the rest
-    configured_provider = (settings.PRIMARY_LLM_PROVIDER or "").lower()
-    configured_model = settings.PRIMARY_LLM_MODEL if configured_provider == primary_provider else ""
+def get_rewrite_llm() -> BaseChatModel | None:
+    """Small non-streaming model chain for rewriting follow-up questions; None when no provider is keyed."""
+    settings = get_settings()
+    chain = model_chain(("groq", settings.QUERY_REWRITE_MODEL), [], BUILT_IN_REWRITE_CHAIN)
+    if not chain:
+        return None
+    # Not tagged as fallbacks: a switch here is internal and must not show the "model switched" notice
+    return _chain_llm(chain, 0.0, streaming=False, tag_fallbacks=False)
 
-    if primary_provider == "groq":
-        primary_model = requested_model or configured_model or settings.GROQ_MODEL or "openai/gpt-oss-120b"
-        primary_key = settings.GROQ_API_KEY
-    else:
-        primary_model = requested_model or configured_model or settings.GEMINI_MODEL or "gemini-2.5-flash"
-        primary_key = settings.GOOGLE_API_KEY
 
-    # Auto-switch if primary key is missing but alternative is present
-    if primary_provider == "groq" and not primary_key and settings.GOOGLE_API_KEY:
-        logger.warning("GROQ_API_KEY is not configured; falling back to Gemini as primary")
-        primary_provider = "gemini"
-        primary_model = settings.GEMINI_MODEL or "gemini-2.5-flash"
-        primary_key = settings.GOOGLE_API_KEY
-    elif primary_provider == "gemini" and not primary_key and settings.GROQ_API_KEY:
-        logger.warning("GOOGLE_API_KEY is not configured; falling back to Groq as primary")
-        primary_provider = "groq"
-        primary_model = settings.GROQ_MODEL or "openai/gpt-oss-120b"
-        primary_key = settings.GROQ_API_KEY
-
-    logger.info("Initializing primary LLM: provider=%s, model=%s", primary_provider, primary_model)
-
-    primary_llm = build_chat_model(
-        provider=primary_provider,
-        model_name=primary_model,
-        api_key=primary_key,
-        temperature=getattr(settings, "LLM_TEMPERATURE", 0.1),
-        streaming=True,
-    ).with_config(
-        tags=["primary_llm", f"model:{primary_model}"],
-        metadata={"is_fallback": False, "model": primary_model, "provider": primary_provider},
-    )
-
-    # ── Fallback Model Chain Resolution ───────────────────────────────────────
-    enable_fallback = getattr(settings, "ENABLE_LLM_FALLBACK", True)
-    if not enable_fallback:
-        return primary_llm
-
-    fallbacks: list[BaseChatModel] = []
-    
-    # Parse multi-model fallback chain from settings (comma-separated list)
-    raw_fallback_models = (
-        getattr(settings, "FALLBACK_LLM_MODELS", "")
-        or getattr(settings, "FALLBACK_LLM_MODEL", "")
-    )
-    model_entries = [m.strip() for m in raw_fallback_models.split(",") if m.strip()]
-    default_fallback_provider = getattr(settings, "FALLBACK_LLM_PROVIDER", "").lower().strip() or "groq"
-    
-    seen_models = {primary_model}
-
-    for entry in model_entries:
-        # Supports format "provider:model" (e.g. "gemini:gemini-2.5-flash") or simple "model" (e.g. "openai/gpt-oss-20b")
-        if ":" in entry:
-            prov, mod = entry.split(":", 1)
-            prov = prov.strip().lower()
-            mod = mod.strip()
-        else:
-            prov = default_fallback_provider
-            mod = entry
-
-        if not mod or mod in seen_models:
-            continue
-        seen_models.add(mod)
-
-        # Validate that the API key for this provider exists
-        if prov == "groq" and settings.GROQ_API_KEY:
-            key = settings.GROQ_API_KEY
-        elif prov in ("gemini", "google") and settings.GOOGLE_API_KEY:
-            key = settings.GOOGLE_API_KEY
-        else:
-            continue
-
-        try:
-            logger.info("Adding fallback model to resilience chain: provider=%s, model=%s", prov, mod)
-            fb_llm = build_chat_model(
-                provider=prov,
-                model_name=mod,
-                api_key=key,
-                temperature=getattr(settings, "FALLBACK_LLM_TEMPERATURE", 0.1),
-                streaming=True,
-            ).with_config(
-                tags=["fallback_llm", f"model:{mod}"],
-                metadata={"is_fallback": True, "model": mod, "provider": prov},
-            )
-            fallbacks.append(fb_llm)
-        except Exception as exc:
-            logger.warning("Could not initialize fallback model %s:%s — %s", prov, mod, exc)
-
-    # Emergency fallback if list was empty or couldn't resolve
-    if not fallbacks and settings.GROQ_API_KEY:
-        for backup in _EMERGENCY_GROQ_FALLBACKS:
-            if backup not in seen_models:
-                fallbacks.append(
-                    build_chat_model(
-                        provider="groq",
-                        model_name=backup,
-                        api_key=settings.GROQ_API_KEY,
-                        temperature=0.1,
-                        streaming=True,
-                    ).with_config(
-                        tags=["fallback_llm", f"model:{backup}"],
-                        metadata={"is_fallback": True, "model": backup, "provider": "groq"},
-                    )
-                )
-                seen_models.add(backup)
-                break
-
-    if fallbacks:
-        logger.info("Chaining primary LLM '%s' with %d fallback model(s)", primary_model, len(fallbacks))
-        return primary_llm.with_fallbacks(fallbacks)
-
-    return primary_llm
+def get_vision_llm(streaming: bool = False) -> BaseChatModel:
+    """Gemini chain for questions about images; GEMINI_MODEL first when set."""
+    settings = get_settings()
+    chain = model_chain(("gemini", settings.GEMINI_MODEL), [], BUILT_IN_VISION_CHAIN)
+    if not chain:
+        raise ValueError("Questions about images need a Gemini API key (GOOGLE_API_KEY).")
+    return _chain_llm(chain, 0.1, streaming=streaming, tag_fallbacks=False)

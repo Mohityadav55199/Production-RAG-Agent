@@ -142,11 +142,10 @@ def vision_available() -> bool:
 
 
 def vision_chat_model(streaming: bool = False):
-    """A Gemini chat model for image requests (never wrapped in the text-only Groq fallback chain)."""
-    from app.services.llm_factory import build_chat_model
+    """A Gemini model chain for image requests (Groq's text-only models are never used here)."""
+    from app.services.llm_factory import get_vision_llm
 
-    s = get_settings()
-    return build_chat_model("gemini", s.GEMINI_MODEL, s.GOOGLE_API_KEY, temperature=0.1, streaming=streaming)
+    return get_vision_llm(streaming=streaming)
 
 
 def image_content(text: str, images: list[bytes]) -> list[dict]:
