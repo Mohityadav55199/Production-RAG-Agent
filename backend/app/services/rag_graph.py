@@ -29,6 +29,7 @@ from langgraph.graph import END, START, StateGraph
 from app.config import get_settings
 from app.schemas.query import SourceCitation
 from app.services.asset_service import images_for_sources
+from app.services.context_prep import tidy_chunks
 from app.services.conversation_service import save_turn
 from app.services.query_rewriter import condense_question
 from app.services.retrieval_service import RetrievedChunk, fetch_document_chunks, retrieve_chunks
@@ -209,6 +210,8 @@ async def _retrieve_node(state: RAGState) -> dict:
         document_ids=scope.document_ids,
         **_RETRIEVAL_BY_STYLE.get(style, _RETRIEVAL_BY_STYLE["detailed"]),
     )
+
+    chunks = tidy_chunks(chunks)
 
     # For a code project, always include the generated overview (folder tree),
     # so structural questions work even when no single file matches well.

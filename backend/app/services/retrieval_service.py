@@ -8,6 +8,7 @@ Reuses the existing embed_texts() from Phase 2 — task_type is the only
 difference between document ingestion and query embedding.
 """
 
+from collections import OrderedDict
 from dataclasses import dataclass
 
 from qdrant_client.http import models as qmodels
@@ -30,6 +31,23 @@ class RetrievedChunk:
     chunk_index: int
     text: str
     score: float   # cosine similarity (0 – 1)
+
+
+_QUERY_CACHE_SIZE = 256
+_query_vectors: "OrderedDict[str, list[float]]" = OrderedDict()
+
+
+async def _embed_query(query: str) -> list[float]:
+    """Embed a search query; repeated questions (retries, re-asks, the eval) skip the embedding API."""
+    key = query.strip().lower()
+    if key in _query_vectors:
+        _query_vectors.move_to_end(key)
+        return _query_vectors[key]
+    vector = (await embed_batch_with_retry([query], task_type="RETRIEVAL_QUERY"))[0]
+    _query_vectors[key] = vector
+    if len(_query_vectors) > _QUERY_CACHE_SIZE:
+        _query_vectors.popitem(last=False)
+    return vector
 
 
 async def retrieve_chunks(
@@ -63,8 +81,7 @@ async def retrieve_chunks(
     coll = collection_name or settings.QDRANT_COLLECTION
 
     # Embed the query with RETRIEVAL_QUERY task type (different from RETRIEVAL_DOCUMENT)
-    vectors = await embed_batch_with_retry([query], task_type="RETRIEVAL_QUERY")
-    query_vector = vectors[0]
+    query_vector = await _embed_query(query)
 
     floor = settings.RETRIEVAL_MIN_SCORE if min_score is None else min_score
     gap = settings.RETRIEVAL_MAX_GAP if max_gap == -1.0 else max_gap
