@@ -301,7 +301,7 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
 
   return (
     // Fills the screen below the app and page headers, so the input is visible without scrolling
-    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[26rem] flex-col sm:h-[calc(100dvh-9.5rem)]">
+    <div className="flex h-[calc(100dvh-10.75rem)] min-h-[24rem] flex-col sm:h-[calc(100dvh-9.5rem)]">
       <div
         className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card"
         onDragOver={(e) => {
