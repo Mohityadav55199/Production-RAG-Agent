@@ -453,13 +453,15 @@ async def get_generation(generation_id: uuid.UUID, user: CurrentUser = Depends(g
     return await _generation_detail(await _get_generation(generation_id, user))
 
 
-@router.get("/generations/{generation_id}/pdf", summary="Download the PDF (any draft that compiled)")
-async def download_pdf(generation_id: uuid.UUID, user: CurrentUser = Depends(get_current_user)) -> Response:
+@router.get("/generations/{generation_id}/pdf", summary="Download or preview the PDF (any draft that compiled)")
+async def download_pdf(
+    generation_id: uuid.UUID, inline: bool = False, user: CurrentUser = Depends(get_current_user)
+) -> Response:
     g = await _get_generation(generation_id, user)
     if not g.pdf:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No PDF was compiled for this run.")
-    return Response(g.pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{g.output_name}.pdf"'})
+    disposition = "inline" if inline else f'attachment; filename="{g.output_name}.pdf"'
+    return Response(g.pdf, media_type="application/pdf", headers={"Content-Disposition": disposition})
 
 
 @router.get("/generations/{generation_id}/tex", summary="Download the LaTeX source (any draft that compiled)")

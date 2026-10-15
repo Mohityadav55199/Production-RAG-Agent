@@ -9,9 +9,12 @@ import {
   CheckCircle2,
   Columns2,
   Download,
+  ExternalLink,
   FileCode2,
   Info,
   Loader2,
+  Maximize2,
+  Minimize2,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -22,6 +25,7 @@ import { toast } from "sonner";
 import {
   downloadGenerationFile,
   getGeneration,
+  getGenerationPdfBlob,
   markApplied,
   regenerateBullet,
   rescoreGeneration,
@@ -364,7 +368,47 @@ export function DraftEditor({ generationId, onChanged, focusOutreach }: DraftEdi
   const [applying, setApplying] = useState(false);
   const [comparing, setComparing] = useState(false);
   const [version, setVersion] = useState(0); // bumps on every server update, so the outreach panel reloads
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [splitView, setSplitView] = useState(false);
   const outreachRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!detail?.pdf_available) {
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    setLoadingPreview(true);
+    getGenerationPdfBlob(generationId)
+      .then((blob) => {
+        if (!active) return;
+        const url = URL.createObjectURL(blob);
+        setPreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+      })
+      .catch((err) => {
+        console.warn("Could not load preview", err);
+      })
+      .finally(() => {
+        if (active) setLoadingPreview(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [generationId, detail?.pdf_available, version]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   const apply = useCallback((d: GenerationDetail, restore = false) => {
     setDetail(d);
@@ -500,10 +544,10 @@ export function DraftEditor({ generationId, onChanged, focusOutreach }: DraftEdi
   const aiDraftDiffers = JSON.stringify(draft) !== JSON.stringify(detail.ai_draft);
 
   return (
-    // Desktop: the draft on the left; the score and downloads stay in view on the right.
+    // Desktop: the draft on the left; the score, download buttons, and live PDF preview stay in view on the right.
     // Phone: the score card on top, then the draft.
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem]">
-      <aside className="flex flex-col gap-4 lg:sticky lg:top-20 lg:order-2 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
+    <div className={cn("grid items-start gap-6", splitView ? "lg:grid-cols-2" : "lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem] 2xl:grid-cols-[minmax(0,1fr)_30rem]")}>
+      <aside className="flex flex-col gap-4 lg:sticky lg:top-20 lg:order-2 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto pr-0.5">
         {/* Score and downloads */}
         <Card className={cn("shrink-0", detail.below_threshold ? "border-amber-500/40" : "border-emerald-500/40")}>
           <CardHeader>
@@ -580,6 +624,81 @@ export function DraftEditor({ generationId, onChanged, focusOutreach }: DraftEdi
               </div>
             </div>
           </CardHeader>
+        </Card>
+
+        {/* Live PDF Preview */}
+        <Card className="shrink-0 overflow-hidden">
+          <CardHeader className="py-3 px-4 border-b bg-muted/20">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={cn("size-2 rounded-full shrink-0", detail.pdf_available ? "bg-emerald-500" : "bg-muted-foreground/40")} />
+                <CardTitle className="text-sm font-semibold truncate">Live PDF Preview</CardTitle>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 hidden lg:inline-flex"
+                  title={splitView ? "Narrow sidebar view" : "50/50 side-by-side view"}
+                  onClick={() => setSplitView((v) => !v)}
+                >
+                  {splitView ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+                </Button>
+                {previewUrl && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="size-7"
+                    title="Open PDF in new tab"
+                    onClick={() => window.open(previewUrl, "_blank")}
+                  >
+                    <ExternalLink className="size-3.5" />
+                  </Button>
+                )}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  disabled={!detail.pdf_available || dirty}
+                  title="Download compiled PDF"
+                  onClick={() => download("pdf")}
+                >
+                  <Download className="size-3.5" />
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-2 sm:p-3">
+            {scoring || loadingPreview ? (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed py-16 text-center text-xs text-muted-foreground bg-muted/10">
+                <Loader2 className="size-6 animate-spin text-primary" />
+                <span>{scoring ? "Compiling fresh PDF..." : "Loading live preview..."}</span>
+              </div>
+            ) : detail.pdf_available && previewUrl ? (
+              <div className="space-y-1.5">
+                <iframe
+                  src={previewUrl}
+                  title="Resume PDF Preview"
+                  className={cn(
+                    "w-full rounded-md border bg-white shadow-sm transition-all",
+                    splitView ? "h-[calc(100dvh-18rem)] min-h-[580px]" : "h-[440px] xl:h-[500px]"
+                  )}
+                />
+                <div className="flex items-center justify-between px-1 text-[11px] text-muted-foreground">
+                  <span>Preview matches last scored draft</span>
+                  {dirty && <span className="text-amber-600 dark:text-amber-400 font-medium">Re-score to refresh PDF</span>}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed py-12 px-4 text-center text-xs text-muted-foreground">
+                <FileCode2 className="mx-auto size-7 text-muted-foreground/40 mb-2" />
+                <p className="font-medium text-foreground/80">No compiled PDF preview yet</p>
+                <p className="mt-1 text-muted-foreground">
+                  Click <strong className="text-foreground">Re-score</strong> to compile this draft with LaTeX and display the live preview.
+                </p>
+              </div>
+            )}
+          </CardContent>
         </Card>
       </aside>
 

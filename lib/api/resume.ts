@@ -389,6 +389,22 @@ export async function downloadGenerationFile(id: string, kind: "pdf" | "tex", fi
   URL.revokeObjectURL(url);
 }
 
+/** Fetch a compiled PDF as a blob for live inline preview. */
+export async function getGenerationPdfBlob(id: string): Promise<Blob> {
+  const res = await authedFetch(`${getApiBase()}/resume/generations/${id}/pdf?inline=true`);
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      const json = (await res.json()) as { detail?: string };
+      if (json.detail) message = json.detail;
+    } catch {
+      // keep status text
+    }
+    throw new ApiError(res.status, message);
+  }
+  return res.blob();
+}
+
 // ── Job Tracker & Outreach Types and APIs ────────────────────────────────────
 
 export type JobStatus = "saved" | "applied" | "interviewing" | "offered" | "rejected" | "archived";
