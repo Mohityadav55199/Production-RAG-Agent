@@ -3,18 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
-  Bot,
-  Copy,
+  ArrowUp,
   Check,
-  ImagePlus,
+  Copy,
   Loader2,
-  MessageSquarePlus,
+  Plus,
   RotateCcw,
-  Send,
   Square,
+  SquarePen,
   ThumbsDown,
   ThumbsUp,
-  User,
   X,
   Zap,
 } from "lucide-react";
@@ -34,17 +32,8 @@ import { CitationChips } from "@/components/chat/citation-chips";
 import { useApp } from "@/lib/context/app-context";
 import { suggestedQuestions, type ChatMessage } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { AuthImage } from "@/components/ui/auth-image";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { SafeMarkdown } from "@/components/ui/safe-markdown";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 function createId() {
@@ -72,6 +61,7 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
   const { sources: knowledgeSources } = useKnowledgeSources();
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Images attached to the next question
   const [attachments, setAttachments] = useState<AttachedImage[]>([]);
@@ -151,7 +141,9 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
   };
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Scroll only the conversation, never the page around it
+    const box = scrollRef.current;
+    if (box) box.scrollTo({ top: box.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
   const sendQuery = useCallback(
@@ -305,11 +297,13 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
     );
   };
 
+  const canSend = (input.trim().length > 0 || attachments.length > 0) && !preparing;
+
   return (
     // Fills the screen below the app and page headers, so the input is visible without scrolling
-    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[26rem] flex-col gap-4 sm:h-[calc(100dvh-9.5rem)]">
-      <Card
-        className="relative flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0"
+    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[26rem] flex-col sm:h-[calc(100dvh-9.5rem)]">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card"
         onDragOver={(e) => {
           if (hasFiles(e) && !isStreaming) {
             e.preventDefault();
@@ -329,244 +323,199 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
         }}
       >
         {dragging && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/10 text-sm font-medium text-primary">
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary bg-primary/10 text-sm font-medium text-primary">
             Drop images here to ask about them
           </div>
         )}
-        <CardHeader className="flex flex-col gap-2 border-b border-border/60 px-4 py-3 sm:px-6 [.border-b]:pb-3">
-          <div className="flex w-full items-center justify-between gap-3">
-            <div className="min-w-0">
-              <CardTitle className="text-base">{codeMode ? "Study your code" : "Ask your documents"}</CardTitle>
-              <CardDescription className="hidden truncate xl:block">
-                {codeMode
-                  ? "Ask anything about an imported repo: architecture, files, flow, bugs. Follow-ups remember the conversation."
-                  : "Ask anything about your uploaded documents. Follow-ups remember the conversation."}
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={startNewChat}
-              disabled={messages.length === 0}
-            >
-              <MessageSquarePlus className="size-4" />
-              New chat
-            </Button>
+
+        {/* Slim top bar: what to search, answer style, new chat */}
+        <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
+          <SourceSelect
+            value={scope}
+            onChange={setScope}
+            sources={knowledgeSources}
+            includeAll
+            allLabel={codeMode ? "All imported projects" : "All my documents"}
+            kind={mode}
+            disabled={isStreaming}
+            className="h-8 max-w-[60%] flex-1 rounded-full border-transparent bg-muted/60 text-xs shadow-none hover:bg-muted sm:max-w-xs"
+          />
+          <div className="ml-auto inline-flex shrink-0 rounded-full bg-muted/60 p-0.5" role="group" aria-label="Answer style">
+            {(["detailed", "concise"] as const).map((style) => (
+              <button
+                key={style}
+                type="button"
+                onClick={() => setAnswerStyle(style)}
+                aria-pressed={answerStyle === style}
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-xs font-medium capitalize transition-colors",
+                  answerStyle === style ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {style}
+              </button>
+            ))}
           </div>
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
-            <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
-              <span className="shrink-0 text-muted-foreground">
-                {codeMode ? "Project" : "Document"}
-              </span>
-              <SourceSelect
-                value={scope}
-                onChange={setScope}
-                sources={knowledgeSources}
-                includeAll
-                allLabel={codeMode ? "All imported projects" : "All my documents"}
-                kind={mode}
-                disabled={isStreaming}
-                className="flex-1"
-              />
-            </label>
-            <div className="inline-flex shrink-0 rounded-lg border p-0.5" role="group" aria-label="Answer style">
-              {(["detailed", "concise"] as const).map((style) => (
-                <button
-                  key={style}
-                  type="button"
-                  onClick={() => setAnswerStyle(style)}
-                  className={cn(
-                    "rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors",
-                    answerStyle === style
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {style}
-                </button>
-              ))}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 rounded-full"
+            onClick={startNewChat}
+            disabled={messages.length === 0}
+            aria-label="New chat"
+            title="New chat"
+          >
+            <SquarePen className="size-4" />
+          </Button>
+        </div>
+
+        {/* Conversation */}
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
             {messages.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-                <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <Bot className="size-7" />
-                </div>
-                <div>
-                  <p className="font-medium">Start a conversation</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {codeMode
-                      ? "Try one of these to study the project in depth"
-                      : "Ask anything about your uploaded documents"}
-                  </p>
-                </div>
-                <div className="flex max-w-2xl flex-wrap justify-center gap-2">
+              <div className="flex min-h-[40vh] flex-col items-center justify-center gap-6 text-center">
+                <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                  {codeMode ? "What do you want to know about your code?" : "What would you like to know?"}
+                </h2>
+                <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-2">
                   {starterQuestions.map((question) => (
-                    <Button
+                    <button
                       key={question}
-                      variant="outline"
-                      size="sm"
-                      className="h-auto whitespace-normal px-3 py-2 text-left"
+                      type="button"
                       disabled={isStreaming}
                       onClick={() => sendQuery(question)}
+                      className="rounded-xl border bg-background px-3.5 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
                     >
                       {question}
-                    </Button>
+                    </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="space-y-6">
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={cn(
-                      "flex gap-3",
-                      message.role === "user" ? "justify-end" : "justify-start"
-                    )}
-                  >
-                    {message.role === "assistant" && (
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <Bot className="size-4" />
+              <div className="space-y-8">
+                {messages.map((message) =>
+                  message.role === "user" ? (
+                    <div key={message.id} className="flex justify-end">
+                      <div className="max-w-[85%] space-y-2">
+                        {message.attachments && message.attachments.length > 0 && (
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {message.attachments.map((image) => (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                key={image.id}
+                                src={image.previewUrl}
+                                alt={image.name}
+                                className="max-h-40 max-w-full rounded-2xl border object-cover"
+                              />
+                            ))}
+                          </div>
+                        )}
+                        {message.content && (
+                          <div className="whitespace-pre-wrap break-words rounded-3xl bg-muted px-4 py-2.5 text-[15px] leading-relaxed">
+                            {message.content}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    <div
-                      className={cn(
-                        "max-w-[85%] rounded-xl px-4 py-3 text-sm",
-                        message.role === "user"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted"
-                      )}
-                    >
-                      {message.role === "assistant" ? (
-                        <>
-                          {message.fallbackNotice && (
-                            <div className="mb-2.5 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-200">
-                              <Zap className="size-3.5 shrink-0 text-amber-500 animate-pulse" />
-                              <span>
-                                <strong>Model switched:</strong> Using{" "}
-                                <span className="font-semibold underline decoration-amber-500/50">{message.fallbackNotice.model}</span>{" "}
-                                (primary LLM rate-limited or unavailable).
-                              </span>
-                            </div>
-                          )}
-                          <div className="prose prose-sm dark:prose-invert max-w-none relative group">
-                          <SafeMarkdown>
-                            {message.content ||
-                              (message.isStreaming ? "▍" : "")}
-                          </SafeMarkdown>
-                          {message.isStreaming && (
-                            <span className="ml-0.5 inline-block animate-pulse">
-                              ▍
-                            </span>
-                          )}
-                          {!message.isStreaming && message.content && (
-                            <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-6 text-muted-foreground hover:text-foreground"
-                                onClick={() => copyToClipboard(message.content, message.id)}
-                              >
-                                {copiedId === message.id ? (
-                                  <Check className="size-3 text-emerald-500" />
-                                ) : (
-                                  <Copy className="size-3" />
-                                )}
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                        <>
-                          {message.attachments && message.attachments.length > 0 && (
-                            <div className="mb-2 flex flex-wrap gap-2">
-                              {message.attachments.map((image) => (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  key={image.id}
-                                  src={image.previewUrl}
-                                  alt={image.name}
-                                  className="max-h-40 max-w-full rounded-lg border border-primary-foreground/20 object-cover"
-                                />
-                              ))}
-                            </div>
-                          )}
-                          {message.content}
-                        </>
-                      )}
-
-                      {message.role === "assistant" && !message.isStreaming && !message.error && message.content && (
-                        <div className="mt-2 flex items-center gap-1">
-                          {(["up", "down"] as const).map((value) => (
-                            <Button
-                              key={value}
-                              variant="ghost"
-                              size="icon"
-                              aria-label={value === "up" ? "Good answer" : "Bad answer"}
-                              aria-pressed={message.rating === value}
-                              className={cn(
-                                "size-6 text-muted-foreground hover:text-foreground",
-                                message.rating === value && "text-foreground"
-                              )}
-                              onClick={() => rateAnswer(message, value)}
-                            >
-                              {value === "up" ? (
-                                <ThumbsUp className={cn("size-3", message.rating === value && "fill-current")} />
-                              ) : (
-                                <ThumbsDown className={cn("size-3", message.rating === value && "fill-current")} />
-                              )}
-                            </Button>
-                          ))}
+                    </div>
+                  ) : (
+                    <div key={message.id} className="group">
+                      {message.fallbackNotice && (
+                        <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-200">
+                          <Zap className="size-3.5 shrink-0 text-amber-500" />
+                          <span>
+                            Answered by <strong>{message.fallbackNotice.model}</strong> because the main model is busy.
+                          </span>
                         </div>
                       )}
+                      <div className="prose prose-sm max-w-none text-[15px] leading-relaxed dark:prose-invert sm:prose-base">
+                        {message.content ? (
+                          <SafeMarkdown>{message.content}</SafeMarkdown>
+                        ) : message.isStreaming ? (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground" role="status" aria-label="Thinking">
+                            <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.2s]" />
+                            <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.1s]" />
+                            <span className="size-1.5 animate-bounce rounded-full bg-current" />
+                          </span>
+                        ) : null}
+                        {message.isStreaming && message.content && (
+                          <span className="ml-0.5 inline-block animate-pulse">▍</span>
+                        )}
+                      </div>
 
                       {message.error && (
-                        <div className="mt-2 flex items-center gap-2 text-xs text-destructive">
-                          <AlertCircle className="size-3.5" />
+                        <div className="mt-2 flex items-center gap-2 text-sm text-destructive">
+                          <AlertCircle className="size-4" />
                           {message.error}
                         </div>
                       )}
 
-                      {message.sources && message.sources.length > 0 && (
-                        <CitationChips sources={message.sources} />
-                      )}
+                      {message.sources && message.sources.length > 0 && <CitationChips sources={message.sources} />}
 
-                      {message.error && lastQuery && !message.isStreaming && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="mt-2 h-7 px-2 text-xs"
-                          onClick={() => sendQuery(lastQuery, true)}
-                        >
-                          <RotateCcw className="size-3" />
-                          Retry
-                        </Button>
+                      {!message.isStreaming && (message.content || message.error) && (
+                        <div className="mt-1.5 flex items-center gap-0.5 text-muted-foreground">
+                          {message.content && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7 rounded-lg hover:text-foreground"
+                              onClick={() => copyToClipboard(message.content, message.id)}
+                              aria-label="Copy answer"
+                              title="Copy"
+                            >
+                              {copiedId === message.id ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                            </Button>
+                          )}
+                          {!message.error && message.content &&
+                            (["up", "down"] as const).map((value) => (
+                              <Button
+                                key={value}
+                                variant="ghost"
+                                size="icon"
+                                aria-label={value === "up" ? "Good answer" : "Bad answer"}
+                                title={value === "up" ? "Good answer" : "Bad answer"}
+                                aria-pressed={message.rating === value}
+                                className={cn("size-7 rounded-lg hover:text-foreground", message.rating === value && "text-foreground")}
+                                onClick={() => rateAnswer(message, value)}
+                              >
+                                {value === "up" ? (
+                                  <ThumbsUp className={cn("size-3.5", message.rating === value && "fill-current")} />
+                                ) : (
+                                  <ThumbsDown className={cn("size-3.5", message.rating === value && "fill-current")} />
+                                )}
+                              </Button>
+                            ))}
+                          {message.error && lastQuery && (
+                            <Button variant="ghost" size="sm" className="h-7 gap-1 rounded-lg px-2 text-xs" onClick={() => sendQuery(lastQuery, true)}>
+                              <RotateCcw className="size-3.5" />
+                              Retry
+                            </Button>
+                          )}
+                        </div>
                       )}
                     </div>
-                    {message.role === "user" && (
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                        <User className="size-4 text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  )
+                )}
                 <div ref={bottomRef} />
               </div>
             )}
           </div>
+        </div>
 
-          <div className="border-t border-border/60 p-4">
+        {/* Composer */}
+        <div className="px-3 pb-3 pt-1 sm:px-4">
+          <form
+            className="mx-auto w-full max-w-3xl rounded-3xl border bg-background shadow-sm focus-within:border-ring/60 focus-within:shadow-md"
+            onSubmit={(e) => {
+              e.preventDefault();
+              sendQuery(input);
+            }}
+          >
             {(attachments.length > 0 || preparing) && (
-              <div className="mb-3 flex flex-wrap items-center gap-2" aria-label="Attached images">
+              <div className="flex flex-wrap items-center gap-2 px-3 pt-3" aria-label="Attached images">
                 {attachments.map((image) => (
                   <div key={image.id} className="relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={image.previewUrl} alt={image.name} className="size-16 rounded-lg border object-cover" />
+                    <img src={image.previewUrl} alt={image.name} className="size-14 rounded-xl border object-cover" />
                     <button
                       type="button"
                       onClick={() => removeAttachment(image.id)}
@@ -580,37 +529,32 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                 {preparing && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Preparing image" />}
               </div>
             )}
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                sendQuery(input);
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={IMAGE_ACCEPT}
+              multiple
+              className="hidden"
+              data-testid="chat-image-input"
+              onChange={(e) => {
+                void addImages(Array.from(e.target.files ?? []));
+                e.target.value = "";
               }}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={IMAGE_ACCEPT}
-                multiple
-                className="hidden"
-                data-testid="chat-image-input"
-                onChange={(e) => {
-                  void addImages(Array.from(e.target.files ?? []));
-                  e.target.value = "";
-                }}
-              />
+            />
+            <div className="flex items-end gap-1.5 p-2">
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 size="icon"
+                className="size-9 shrink-0 rounded-full text-muted-foreground"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isStreaming || preparing || attachments.length >= MAX_CHAT_IMAGES}
                 aria-label="Attach an image"
                 title="Attach an image (you can also paste or drop one)"
               >
-                <ImagePlus className="size-4" />
+                <Plus className="size-5" />
               </Button>
-              <Textarea
+              <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onPaste={(e) => {
@@ -620,12 +564,9 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                     void addImages(files);
                   }
                 }}
-                placeholder={
-                  codeMode
-                    ? "Ask about the code, or paste a screenshot of an error…"
-                    : "Ask about your documents, or paste or attach an image…"
-                }
-                className="min-h-[44px] resize-none"
+                placeholder={codeMode ? "Ask about the code" : "Ask anything about your documents"}
+                aria-label="Message"
+                className="max-h-48 min-h-9 flex-1 resize-none bg-transparent py-1.5 text-[15px] outline-none [field-sizing:content] placeholder:text-muted-foreground disabled:opacity-60"
                 rows={1}
                 disabled={isStreaming}
                 onKeyDown={(e) => {
@@ -636,32 +577,21 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                 }}
               />
               {isStreaming ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={stopGeneration}
-                >
-                  <Square className="size-4" />
+                <Button type="button" size="icon" className="size-9 shrink-0 rounded-full" onClick={stopGeneration} aria-label="Stop">
+                  <Square className="size-3.5 fill-current" />
                 </Button>
               ) : (
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={(!input.trim() && attachments.length === 0) || preparing}
-                  aria-label="Send"
-                >
-                  {isStreaming ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Send className="size-4" />
-                  )}
+                <Button type="submit" size="icon" className="size-9 shrink-0 rounded-full" disabled={!canSend} aria-label="Send">
+                  <ArrowUp className="size-4" />
                 </Button>
               )}
-            </form>
-          </div>
-        </CardContent>
-      </Card>
+            </div>
+          </form>
+          <p className="mt-1.5 hidden text-center text-[11px] text-muted-foreground sm:block">
+            Answers come from your {codeMode ? "projects" : "documents"} and cite their sources. Check anything important.
+          </p>
+        </div>
+      </div>
       <ImageLightbox assetId={lightbox?.id ?? null} title={lightbox?.title} onClose={() => setLightbox(null)} />
     </div>
   );

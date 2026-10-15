@@ -2,18 +2,11 @@
 
 import { useCallback, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { CloudUpload, FileUp, Loader2, Sparkles } from "lucide-react";
+import { CloudUpload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { uploadDocuments } from "@/lib/api/upload";
 import { useApp } from "@/lib/context/app-context";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
@@ -147,58 +140,32 @@ export function UploadCard({ disabled, onUploadComplete }: UploadCardProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.1 }}
     >
-      <Card className="relative overflow-hidden border-dashed">
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-violet-500/5" />
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <CloudUpload className="size-4" />
-            </div>
-            <div>
-              <CardTitle>Upload Documents</CardTitle>
-              <CardDescription>
-                Drop files here or browse from your device
-              </CardDescription>
-            </div>
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={cn(
+          "rounded-2xl border-2 border-dashed bg-card px-4 py-3 transition-colors",
+          isDragging ? "border-primary bg-primary/5" : "border-border/80 hover:border-primary/40",
+          isDisabled && "pointer-events-none opacity-60"
+        )}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.csv,text/csv,.txt,text/plain,.md,text/markdown,.markdown,text/markdown,.png,image/png,.jpg,image/jpeg,.jpeg,image/jpeg,.tiff,image/tiff,.bmp,image/bmp,.webp,image/webp,.json,application/json,.log,text/plain"
+          multiple
+          className="hidden"
+          disabled={isDisabled}
+          onChange={(e) => {
+            if (e.target.files?.length) handleFiles(e.target.files);
+          }}
+        />
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            {uploading || processing ? <Loader2 className="size-5 animate-spin" /> : <CloudUpload className="size-5" />}
           </div>
-        </CardHeader>
-        <CardContent>
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.csv,text/csv,.txt,text/plain,.md,text/markdown,.markdown,text/markdown,.png,image/png,.jpg,image/jpeg,.jpeg,image/jpeg,.tiff,image/tiff,.bmp,image/bmp,.webp,image/webp,.json,application/json,.log,text/plain"
-            multiple
-            className="hidden"
-            disabled={isDisabled}
-            onChange={(e) => {
-              if (e.target.files?.length) handleFiles(e.target.files);
-            }}
-          />
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={cn(
-              "relative flex min-h-[180px] flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition-all duration-300",
-              isDragging
-                ? "border-primary bg-primary/5 scale-[1.01]"
-                : "border-border/80 hover:border-primary/40 hover:bg-muted/30",
-              isDisabled && "pointer-events-none opacity-60"
-            )}
-          >
-            <motion.div
-              animate={
-                isDragging ? { scale: 1.1, y: -4 } : { scale: 1, y: 0 }
-              }
-              transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"
-            >
-              {uploading || processing ? (
-                <Loader2 className="size-7 animate-spin" />
-              ) : (
-                <FileUp className="size-7" />
-              )}
-            </motion.div>
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">
               {uploading
                 ? `Uploading… ${uploadProgress}%`
@@ -206,29 +173,20 @@ export function UploadCard({ disabled, onUploadComplete }: UploadCardProps) {
                   ? "Processing documents…"
                   : isDragging
                     ? "Release to upload"
-                    : "Drag & drop your files"}
+                    : "Upload documents"}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              PDF, DOCX, PPTX, XLSX, CSV, TXT, MD and images (PNG, JPG, WebP), up to 50 MB each
+            <p className="truncate text-xs text-muted-foreground" title="PDF, DOCX, PPTX, XLSX, CSV, TXT, MD and images (PNG, JPG, WebP), up to 50 MB each">
+              Drop files here · PDF, Word, PowerPoint, Excel, CSV, text, images · 50 MB max
             </p>
-            {(uploading || processing) && (
-              <Progress
-                value={uploading ? uploadProgress : undefined}
-                className="mt-4 h-2 w-full max-w-xs"
-              />
-            )}
-            <Button
-              className="mt-5"
-              size="sm"
-              disabled={isDisabled}
-              onClick={() => inputRef.current?.click()}
-            >
-              <Sparkles className="size-3.5" />
-              Browse Files
-            </Button>
           </div>
-        </CardContent>
-      </Card>
+          <Button size="sm" variant="secondary" className="shrink-0" disabled={isDisabled} onClick={() => inputRef.current?.click()}>
+            Browse
+          </Button>
+        </div>
+        {(uploading || processing) && (
+          <Progress value={uploading ? uploadProgress : undefined} className="mt-3 h-1.5 w-full" />
+        )}
+      </div>
     </motion.div>
   );
 }

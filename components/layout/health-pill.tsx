@@ -1,92 +1,59 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useHealth } from "@/lib/hooks/use-health";
 import { cn } from "@/lib/utils";
 
 const ONLINE = ["connected", "ok", "healthy"];
 const isOnline = (v: string | undefined) => ONLINE.includes(String(v ?? "").toLowerCase());
 
-/** System health as a small pill; click it for the per-service breakdown. */
+/** System health as small inline status chips: one per service, no dropdown. */
 export function HealthPill({ className }: { className?: string }) {
   const { health, loading, refetch } = useHealth();
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const checking = loading && !health;
 
   const services = [
-    { name: "Backend API", value: health?.backend },
-    ...(health?.groq ? [{ name: "Groq LLM", value: health.groq }] : []),
+    { name: "Backend", value: health?.backend },
+    ...(health?.groq ? [{ name: "Groq", value: health.groq }] : []),
     { name: "Google AI", value: health?.gemini },
-    { name: "PostgreSQL", value: health?.postgres },
+    { name: "Postgres", value: health?.postgres },
     { name: "Qdrant", value: health?.qdrant },
   ];
-  const offline = services.filter((s) => !isOnline(s.value));
-  const state = loading && !health ? "checking" : offline.length === 0 ? "ok" : "issues";
-  const label =
-    state === "checking" ? "Checking…" : state === "ok" ? "All systems up" : `${offline.length} issue${offline.length > 1 ? "s" : ""}`;
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent ? e.key === "Escape" : !rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
 
   return (
-    <div ref={rootRef} className={cn("relative", className)}>
+    <div className={cn("flex flex-wrap items-center justify-end gap-1", className)} aria-label="System health">
+      {services.map((s) => {
+        const up = isOnline(s.value);
+        return (
+          <span
+            key={s.name}
+            title={`${s.name}: ${checking ? "checking" : up ? "online" : "needs attention"}`}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border bg-card px-2 py-0.5 text-[11px] font-medium",
+              !checking && !up && "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+            )}
+          >
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                checking ? "animate-pulse bg-muted-foreground" : up ? "bg-emerald-500" : "bg-amber-500"
+              )}
+            />
+            <span className="hidden sm:inline">{s.name}</span>
+            <span className="sr-only sm:hidden">{s.name}</span>
+          </span>
+        );
+      })}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-label={`System health: ${label}`}
-        className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs font-medium shadow-sm transition-colors hover:bg-muted"
+        onClick={refetch}
+        disabled={loading}
+        className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+        aria-label="Check services again"
+        title="Check again"
       >
-        <span
-          className={cn(
-            "size-2 rounded-full",
-            state === "ok" ? "bg-emerald-500" : state === "issues" ? "bg-amber-500" : "animate-pulse bg-muted-foreground"
-          )}
-        />
-        <span className="whitespace-nowrap">{label}</span>
-        <ChevronDown className={cn("size-3 text-muted-foreground transition-transform", open && "rotate-180")} />
+        <RefreshCw className={cn("size-3", loading && "animate-spin")} />
       </button>
-
-      {open && (
-        <div className="absolute right-0 z-40 mt-2 w-60 rounded-xl border bg-popover p-3 text-sm text-popover-foreground shadow-lg">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="font-semibold">System health</span>
-            <button
-              type="button"
-              onClick={refetch}
-              disabled={loading}
-              className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Check again"
-            >
-              <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
-            </button>
-          </div>
-          <ul className="space-y-1.5">
-            {services.map((s) => (
-              <li key={s.name} className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2">
-                  <span className={cn("size-1.5 rounded-full", isOnline(s.value) ? "bg-emerald-500" : "bg-amber-500")} />
-                  {s.name}
-                </span>
-                <span className={cn("text-xs", isOnline(s.value) ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>
-                  {isOnline(s.value) ? "Online" : loading && !health ? "Checking" : "Needs attention"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
