@@ -1,30 +1,36 @@
+import importlib
 import mimetypes
 from app.services.parsers.base import DocumentParser
-from app.services.parsers.pdf_parser import PDFParser
-from app.services.parsers.docx_parser import DocxParser
-from app.services.parsers.pptx_parser import PptxParser
-from app.services.parsers.xlsx_parser import XlsxParser
-from app.services.parsers.csv_parser import CsvParser
-from app.services.parsers.txt_parser import TxtParser
-from app.services.parsers.markdown_parser import MarkdownParser
-from app.services.parsers.image_parser import ImageParser
-from app.services.parsers.code_parser import CodeParser
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Initialize singletons
-_parsers = {
-    "pdf": PDFParser(),
-    "docx": DocxParser(),
-    "pptx": PptxParser(),
-    "xlsx": XlsxParser(),
-    "csv": CsvParser(),
-    "txt": TxtParser(),
-    "markdown": MarkdownParser(),
-    "image": ImageParser(),
-    "code": CodeParser(),
+# Parser classes by kind. Each module (and its heavy library: pandas, openpyxl, python-pptx, OpenCV ...)
+# is imported on first use, which keeps the idle server well inside a 512 MB instance.
+_PARSER_CLASSES = {
+    "pdf": ("app.services.parsers.pdf_parser", "PDFParser"),
+    "docx": ("app.services.parsers.docx_parser", "DocxParser"),
+    "pptx": ("app.services.parsers.pptx_parser", "PptxParser"),
+    "xlsx": ("app.services.parsers.xlsx_parser", "XlsxParser"),
+    "csv": ("app.services.parsers.csv_parser", "CsvParser"),
+    "txt": ("app.services.parsers.txt_parser", "TxtParser"),
+    "markdown": ("app.services.parsers.markdown_parser", "MarkdownParser"),
+    "image": ("app.services.parsers.image_parser", "ImageParser"),
+    "code": ("app.services.parsers.code_parser", "CodeParser"),
 }
+
+
+class _LazyParsers(dict):
+    """Parser singletons, created the first time each kind is asked for."""
+
+    def __missing__(self, kind: str) -> DocumentParser:
+        module, cls = _PARSER_CLASSES[kind]
+        parser = getattr(importlib.import_module(module), cls)()
+        self[kind] = parser
+        return parser
+
+
+_parsers = _LazyParsers()
 
 def get_parser_for_file(filename: str, mime_type: str = "") -> DocumentParser:
     """

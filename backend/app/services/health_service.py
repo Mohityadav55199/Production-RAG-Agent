@@ -3,16 +3,17 @@ Health-check service.
 
 Performs real connectivity checks against:
   - Google Gemini   → lightweight models.list call
-  - PostgreSQL      → raw asyncpg ping (SELECT 1)
+  - PostgreSQL      → SELECT 1 through the app's engine
   - Qdrant          → cluster info endpoint
 """
 
 import asyncio
 
-import asyncpg
 import google.generativeai as genai
+from sqlalchemy import text
 
 from app.config import get_settings
+from app.db.postgres import get_engine
 from app.db.qdrant import get_qdrant_client
 from app.schemas.health import HealthResponse, ServiceStatus
 from app.utils.logging import get_logger
@@ -59,55 +60,11 @@ async def _check_groq(settings) -> ServiceStatus | None:
 
 
 async def _check_postgres(settings) -> ServiceStatus:
-    """Open a raw asyncpg connection and execute SELECT 1."""
+    """Run SELECT 1 through the application's own engine, so the check uses exactly the
+    connection settings (DSN rewriting, SSL) that the app itself uses."""
     try:
-        if settings.DATABASE_URL:
-            raw_url = settings.DATABASE_URL
-            if "+asyncpg" in raw_url:
-                raw_url = raw_url.replace("+asyncpg", "")
-            elif raw_url.startswith("postgres://"):
-                raw_url = raw_url.replace("postgres://", "postgresql://", 1)
-            
-            from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
-            parsed = urlparse(raw_url)
-            if parsed.query:
-                allowed_params = {
-                    "ssl", "timeout", "command_timeout", "statement_cache_size",
-                    "max_cached_statement_lifetime", "max_cacheable_statement_size",
-                    "server_settings"
-                }
-                query_params = parse_qsl(parsed.query)
-                new_params = []
-                ssl_set = False
-                for k, v in query_params:
-                    if k == "sslmode":
-                        if v != "disable" and not ssl_set:
-                            new_params.append(("ssl", "require"))
-                            ssl_set = True
-                    elif k == "ssl":
-                        new_params.append((k, v))
-                        ssl_set = True
-                    elif k in allowed_params:
-                        new_params.append((k, v))
-                raw_url = urlunparse(parsed._replace(query=urlencode(new_params)))
-
-            conn: asyncpg.Connection = await asyncio.wait_for(
-                asyncpg.connect(raw_url),
-                timeout=5,
-            )
-        else:
-            conn: asyncpg.Connection = await asyncio.wait_for(
-                asyncpg.connect(
-                    host=settings.POSTGRES_HOST,
-                    port=settings.POSTGRES_PORT,
-                    user=settings.POSTGRES_USER,
-                    password=settings.POSTGRES_PASSWORD,
-                    database=settings.POSTGRES_DB,
-                ),
-                timeout=5,
-            )
-        await conn.fetchval("SELECT 1")
-        await conn.close()
+        async with get_engine().connect() as conn:
+            await asyncio.wait_for(conn.execute(text("SELECT 1")), timeout=5)
         logger.debug("PostgreSQL check OK")
         return "connected"
     except Exception as exc:
