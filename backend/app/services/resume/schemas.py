@@ -104,13 +104,29 @@ class Profile(_Tolerant):
         return out
 
 
+SectionName = Literal["summary", "skills", "experience", "projects", "education", "certifications", "achievements"]
+
+
 class RenderOptions(BaseModel):
     """Layout choices for the generated PDF. Every field is a fixed whitelist, so these values can be put into
-    LaTeX without escaping and a client can never inject commands through them."""
+    LaTeX without escaping and a client can never inject commands through them.
+
+    ``preamble`` is the only free text: the LaTeX preamble of a base template the user uploaded. The server sets
+    it from the user's saved layout (``layout_id``) after validating it; a value sent by a client is discarded."""
 
     template: Literal["classic", "compact", "skills_first", "student"] = "classic"
     font_pt: Literal[10, 11, 12] = 10
     margin_in: Literal[0.5, 0.6, 0.75, 1.0] = 0.6
+    font: Literal["serif", "sans"] = "serif"
+    section_order: list[SectionName] | None = Field(None, max_length=7)
+    layout_id: str | None = Field(None, pattern=r"^[0-9a-fA-F-]{36}$")
+    layout_name: str | None = Field(None, max_length=80)
+    preamble: str | None = Field(None, max_length=20000)
+
+    @field_validator("section_order")
+    @classmethod
+    def _unique(cls, v):
+        return list(dict.fromkeys(v)) if v else None
 
 
 class JDAnalysis(_Tolerant):

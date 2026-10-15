@@ -39,6 +39,8 @@ class DocumentListResponse(BaseModel):
     limit: int = Field(..., description="Items per page")
     pages: int = Field(..., description="Total number of pages")
     documents: list[DocumentSummary]
+    storage_used: int = Field(0, description="Bytes used by all of the user's documents and projects")
+    storage_limit: int = Field(0, description="The user's storage allowance in bytes (0 = unlimited)")
 
     model_config = {
         "json_schema_extra": {

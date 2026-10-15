@@ -11,6 +11,7 @@ Editing      POST /resume/generations/{id}/rescore           – re-render and r
 Downloads    GET  /resume/generations/{id}/pdf|tex  – any compiled draft; the app shows when it is below the gate
 """
 
+import asyncio
 import hashlib
 import json
 import re
@@ -27,7 +28,7 @@ from sqlalchemy import delete, func, select
 from app.config import get_settings
 from app.services.auth import CurrentUser, get_current_user
 from app.db.postgres import get_db_session
-from app.db.resume_models import JobApplication, Resume, ResumeGeneration
+from app.db.resume_models import JobApplication, Resume, ResumeGeneration, ResumeLayout
 from app.services.resume import ats, library
 from app.services.resume.agents import analyze_jd, regenerate_bullet, run_tailoring, score_profile, score_text
 from app.services.resume.outreach import generate_cover_letter, generate_recruiter_message
@@ -299,7 +300,7 @@ async def _tailor_run(
         return
 
     try:
-        options = body.options or RenderOptions()
+        options = await resolve_layout(body.options or RenderOptions(), user_id)
         async for event in run_tailoring(body.jd_text, rows, threshold, options=options):
             if await request.is_disconnected():
                 return
@@ -500,6 +501,153 @@ def _check_draft_size(p: Profile) -> None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That draft is too large for a resume.")
 
 
+# ── Saved layouts and base templates ────────────────────────────────────────
+
+MAX_TEMPLATE_BYTES = 2 * 1024 * 1024
+
+# Content used to test-compile an uploaded template (every section, so every command the template styles is used)
+_SAMPLE_PROFILE = Profile(
+    name="Sample Name", email="sample@example.com", phone="+1 555 0100", location="City, Country",
+    summary="Engineer with experience building reliable web services.",
+    skills={"Languages": ["Python", "TypeScript"], "Tools": ["Docker", "PostgreSQL"]},
+    experience=[{"company": "Example Corp", "title": "Software Engineer", "dates": "2021 - Present",
+                 "location": "Remote", "bullets": ["Built an API serving 50k requests a day.", "Cut latency by 30%."]}],
+    projects=[{"name": "Sample Project", "tech": "Python", "bullets": ["Indexed documents for search."]}],
+    education=[{"school": "Example University", "degree": "B.S. Computer Science", "dates": "2017 - 2021"}],
+    certifications=["Sample Certificate"], achievements=["Sample Award"],
+)
+
+
+async def resolve_layout(options: RenderOptions, user_key: str, stored: RenderOptions | None = None) -> RenderOptions:
+    """Attach the user's base-template preamble for options.layout_id. A preamble sent by the client is never
+    trusted; a run whose layout was deleted since keeps the preamble it was made with."""
+    options = options.model_copy(update={"preamble": None})
+    if not options.layout_id:
+        return options.model_copy(update={"layout_name": None})
+    async with get_db_session() as session:
+        row = await session.get(ResumeLayout, uuid.UUID(options.layout_id))
+    if row is not None and row.user_id == user_key:
+        return options.model_copy(update={"preamble": row.preamble, "layout_name": row.name})
+    if stored is not None and stored.layout_id == options.layout_id:
+        return options.model_copy(update={"preamble": stored.preamble, "layout_name": stored.layout_name})
+    return options.model_copy(update={"layout_id": None, "layout_name": None})
+
+
+def _layout_summary(row: ResumeLayout) -> dict:
+    opts = RenderOptions.model_validate(row.options or {})
+    return {
+        "id": str(row.id), "name": row.name, "source": row.source, "has_template": bool(row.preamble),
+        "options": opts.model_copy(update={"layout_id": str(row.id), "layout_name": row.name, "preamble": None}).model_dump(),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+async def _count_layouts(user_key: str) -> int:
+    async with get_db_session() as session:
+        return await session.scalar(select(func.count()).select_from(ResumeLayout).where(ResumeLayout.user_id == user_key)) or 0
+
+
+class LayoutCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    options: RenderOptions
+
+
+@router.get("/layouts", summary="Your saved layouts")
+async def list_layouts(user: CurrentUser = Depends(get_current_user)) -> list[dict]:
+    async with get_db_session() as session:
+        rows = (await session.execute(
+            select(ResumeLayout).where(ResumeLayout.user_id == user.key).order_by(ResumeLayout.created_at.desc())
+        )).scalars().all()
+    return [_layout_summary(r) for r in rows]
+
+
+@router.post("/layouts", status_code=status.HTTP_201_CREATED, summary="Save the current layout under a name")
+async def save_layout(body: LayoutCreate, user: CurrentUser = Depends(get_current_user)) -> dict:
+    if await _count_layouts(user.key) >= 20:
+        raise HTTPException(status.HTTP_409_CONFLICT, "You can keep up to 20 layouts. Delete one first.")
+    # Saving a base-template layout again keeps its template
+    resolved = await resolve_layout(body.options, user.key)
+    row = ResumeLayout(
+        id=uuid.uuid4(), user_id=user.key, name=body.name.strip(), source="latex" if resolved.preamble else "saved",
+        options=resolved.model_copy(update={"preamble": None, "layout_id": None, "layout_name": None}).model_dump(),
+        preamble=resolved.preamble,
+    )
+    async with get_db_session() as session:
+        session.add(row)
+        await session.flush()
+        await session.refresh(row)
+        return _layout_summary(row)
+
+
+@router.post("/layouts/import", status_code=status.HTTP_201_CREATED,
+             summary="Create a layout from your own resume: a .tex (its template) or a .pdf (its look)")
+async def import_layout(
+    file: UploadFile = File(...),
+    name: str = Form("", max_length=80),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    from app.services.resume.latex import check_preamble, compile_pdf, compiler_available, render_latex
+    from app.services.resume.layouts import layout_from_pdf
+
+    if await _count_layouts(user.key) >= 20:
+        raise HTTPException(status.HTTP_409_CONFLICT, "You can keep up to 20 layouts. Delete one first.")
+    content = await file.read(MAX_TEMPLATE_BYTES + 1)
+    if len(content) > MAX_TEMPLATE_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "The file is too large (2 MB at most).")
+    filename = (file.filename or "").lower()
+    label = name.strip() or (file.filename or "My layout").rsplit(".", 1)[0][:80]
+    notes: list[str] = []
+
+    if filename.endswith(".tex"):
+        try:
+            preamble = check_preamble(content.decode("utf-8", errors="replace"))
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        options = RenderOptions()
+        if compiler_available():
+            sample = render_latex(_SAMPLE_PROFILE, options.model_copy(update={"preamble": preamble}))
+            pdf, error = await compile_pdf(sample)
+            if pdf is None:
+                first = next((ln for ln in error.splitlines() if ln.startswith("!")), error[:200])
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    f"The template doesn't compile on the server ({first.strip()}). It may use a package or font "
+                    "that isn't installed; try removing it.",
+                )
+            notes.append("Test-compiled on the server.")
+        else:
+            notes.append("Not test-compiled (no LaTeX compiler here); if it fails, the built-in layout is used.")
+        notes.append("Your template's preamble is used; the content is written with \\section* and itemize.")
+        row = ResumeLayout(id=uuid.uuid4(), user_id=user.key, name=label, source="latex",
+                           options=options.model_dump(), preamble=preamble)
+    elif filename.endswith(".pdf"):
+        try:
+            options, notes = await asyncio.to_thread(layout_from_pdf, content)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 - a broken PDF
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Could not read this PDF.") from exc
+        row = ResumeLayout(id=uuid.uuid4(), user_id=user.key, name=label, source="pdf", options=options.model_dump())
+    else:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Upload a .tex or .pdf resume.")
+
+    async with get_db_session() as session:
+        session.add(row)
+        await session.flush()
+        await session.refresh(row)
+        return {**_layout_summary(row), "notes": notes}
+
+
+@router.delete("/layouts/{layout_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a saved layout")
+async def delete_layout(layout_id: uuid.UUID, user: CurrentUser = Depends(get_current_user)) -> Response:
+    async with get_db_session() as session:
+        row = await session.get(ResumeLayout, layout_id)
+        if row is None or row.user_id != user.key:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Layout not found.")
+        await session.delete(row)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 class RescoreRequest(BaseModel):
     draft: Profile
     options: RenderOptions | None = None
@@ -514,7 +662,8 @@ async def rescore(generation_id: uuid.UUID, body: RescoreRequest, user: CurrentU
     _check_draft_size(body.draft)
     _check_edit_budget(user.key)
 
-    options = body.options or RenderOptions.model_validate(stored.get("options") or {})
+    stored_options = RenderOptions.model_validate(stored.get("options") or {})
+    options = await resolve_layout(body.options or stored_options, user.key, stored_options)
     jd = JDAnalysis.model_validate(stored["jd"])
     scored = await score_profile(body.draft, options, jd, g.jd_text)
 

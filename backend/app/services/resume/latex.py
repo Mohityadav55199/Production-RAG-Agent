@@ -3,9 +3,14 @@ Deterministic LaTeX rendering and compilation.
 
 The LLM only produces structured data; this module turns it into LaTeX using a
 fixed single-column, text-only template (the layout ATS parsers read best).
-Three templates share that rule and differ only in spacing and section order.
+The built-in templates share that rule and differ only in spacing and section order.
 All user text is escaped, so model output can never inject LaTeX commands, and the
 layout options are whitelisted values (see RenderOptions), never free text.
+
+A user may instead supply the preamble of their own LaTeX resume (a "base template"): the content is then
+written with standard \section* and itemize, so the template's own styling of those applies. Such a
+preamble is checked by check_preamble() (no file access, no shell, no catcode tricks) when it is uploaded
+and again before every render.
 Compilation runs without shell escape and with restricted file access.
 """
 
@@ -82,20 +87,60 @@ _PREAMBLE = r"""\documentclass[@FONT@pt,letterpaper]{article}
 
 def _preamble(opts: RenderOptions) -> str:
     style = _STYLES[opts.template]
-    return (
+    text = (
         _PREAMBLE.replace("@FONT@", str(opts.font_pt))
         .replace("@MARGIN@", str(opts.margin_in))
         .replace("@BEFORE@", style["before"])
         .replace("@TITLE@", style["title"])
         .replace("@ITEM@", style["item"])
     )
+    if opts.font == "sans":
+        text = text.replace("\\usepackage{lmodern}\n", "\\usepackage{lmodern}\n\\renewcommand{\\familydefault}{\\sfdefault}\n")
+    return text
 
 
-def _bullets(items: list[str]) -> str:
+# ── Base templates (the user's own LaTeX preamble) ──────────────────────────
+
+MAX_PREAMBLE_CHARS = 20000
+
+# Anything that reads or writes files, runs programs, or rewrites how TeX reads input (which could be used to
+# smuggle the other commands past this check). Compilation also runs with -no-shell-escape and openin_any=p.
+_FORBIDDEN = re.compile(
+    r"\\(include|includeonly|InputIfFileExists|IfFileExists|openin|openout|read|readline|write|"
+    r"immediate|write18|directlua|luaexec|latelua|catcode|csname|scantokens|lowercase|uppercase|newread|"
+    r"newwrite|special|pdfobj|pdffiledump|pdfximage|includegraphics|endinput|everyjob|everypar|output)(?![A-Za-z])"
+    r"|\^\^|\\usepackage(\[[^\]]*\])?\{[^}]*\b(shellesc|pythontex|minted|luacode|bashful|catchfile|verbatim)\b",
+)
+
+
+def check_preamble(source: str) -> str:
+    """The safe preamble of an uploaded .tex (everything before \\begin{document}); raises ValueError if unusable."""
+    text = source.replace("\r\n", "\n")
+    head = text.split("\\begin{document}", 1)[0]
+    head = re.sub(r"(?<!\\)%.*", "", head)            # comments can't hide anything from the check
+    if "\\documentclass" not in head:
+        raise ValueError("This doesn't look like a LaTeX resume: there is no \\documentclass line.")
+    if len(head) > MAX_PREAMBLE_CHARS:
+        raise ValueError("The template's preamble is too long (20,000 characters at most).")
+    # \input of a TeX library file by plain name (e.g. Jake's resume: \input{glyphtounicode}) is fine;
+    # anything with a path, an extension or no braces is not
+    for target in re.findall(r"\\input(?![A-Za-z])\s*(\{[^}]*\}|\S+)", head):
+        if not re.fullmatch(r"\{[A-Za-z0-9_-]{1,40}\}", target):
+            raise ValueError(f"The template uses \\input{target}; only TeX's own files can be input here.")
+    bad = _FORBIDDEN.search(head)
+    if bad:
+        raise ValueError(
+            f"The template uses {bad.group(0).strip()}, which isn't allowed here (file access, shell or catcode "
+            "tricks). Remove it and upload again."
+        )
+    return head.strip() + "\n"
+
+
+def _bullets(items: list[str], env: str = "bullets") -> str:
     items = [esc(b) for b in items if esc(b)]
     if not items:
         return ""
-    return "\\begin{bullets}\n" + "\n".join(f"\\item {b}" for b in items) + "\n\\end{bullets}\n"
+    return f"\\begin{{{env}}}\n" + "\n".join(f"\\item {b}" for b in items) + f"\n\\end{{{env}}}\n"
 
 
 def _row(left: str, right: str, bold_left: bool = True, italic: bool = False) -> str:
@@ -110,21 +155,26 @@ def _row(left: str, right: str, bold_left: bool = True, italic: bool = False) ->
     return f"{left}\\hfill {right}\\par\n"
 
 
-def _sections(p: Profile) -> dict[str, str]:
-    """Each section's LaTeX, keyed by name; an empty section is an empty string."""
+def _sections(p: Profile, head=None, env: str = "bullets") -> dict[str, str]:
+    """Each section's LaTeX, keyed by name; an empty section is an empty string.
+    ``head`` makes a section title (built-in macro by default, \\section* for base templates)."""
+    head = head or (lambda title: f"\\sectionhead{{{title}}}\n")
     sections: dict[str, str] = {}
 
+    def _bullets(items: list[str]) -> str:   # noqa: F811 - the list environment depends on the template
+        return _bullet_list(items, env)
+
     if p.summary:
-        sections["summary"] = "\\sectionhead{Summary}\n" + esc(p.summary) + "\\par\n"
+        sections["summary"] = head("Summary") + esc(p.summary) + "\\par\n"
 
     if p.skills:
-        text = "\\sectionhead{Skills}\n"
+        text = head("Skills")
         for group, items in p.skills.items():
             text += f"\\textbf{{{esc(group)}:}} {esc(', '.join(items))}\\par\n"
         sections["skills"] = text
 
     if p.experience:
-        text = "\\sectionhead{Experience}\n"
+        text = head("Experience")
         for exp in p.experience:
             text += "\\vspace{3pt}\n" + _row(exp.company, exp.dates)
             text += _row(exp.title, exp.location, bold_left=False, italic=True)
@@ -132,7 +182,7 @@ def _sections(p: Profile) -> dict[str, str]:
         sections["experience"] = text
 
     if p.projects:
-        text = "\\sectionhead{Projects}\n"
+        text = head("Projects")
         for proj in p.projects:
             title = esc(proj.name) + (f" $|$ {esc(proj.tech)}" if proj.tech else "")
             text += f"\\vspace{{3pt}}\n\\textbf{{{title}}}\\par\n"
@@ -140,7 +190,7 @@ def _sections(p: Profile) -> dict[str, str]:
         sections["projects"] = text
 
     if p.education:
-        text = "\\sectionhead{Education}\n"
+        text = head("Education")
         for edu in p.education:
             text += _row(edu.school, edu.dates)
             text += _row(edu.degree, edu.location, bold_left=False, italic=True)
@@ -149,25 +199,42 @@ def _sections(p: Profile) -> dict[str, str]:
         sections["education"] = text
 
     if p.certifications:
-        sections["certifications"] = "\\sectionhead{Certifications}\n" + _bullets(p.certifications)
+        sections["certifications"] = head("Certifications") + _bullets(p.certifications)
     if p.achievements:
-        sections["achievements"] = "\\sectionhead{Achievements}\n" + _bullets(p.achievements)
+        sections["achievements"] = head("Achievements") + _bullets(p.achievements)
     return sections
+
+
+_bullet_list = _bullets
+
+
+def section_order(opts: RenderOptions) -> list[str]:
+    """The chosen order (e.g. copied from a PDF), with any section it leaves out kept in the template's order."""
+    base = _ORDERS[opts.template]
+    if not opts.section_order:
+        return base
+    return list(dict.fromkeys([*opts.section_order, *base]))
 
 
 def render_latex(p: Profile, options: RenderOptions | None = None) -> str:
     opts = options or RenderOptions()
     style = _STYLES[opts.template]
-    out = [_preamble(opts)]
-
     contact = [esc(x) for x in (p.location, p.phone, p.email) if esc(x)]
     contact += [esc(l.replace("https://", "").replace("http://", "")) for l in p.links[:3]]
-    out.append(f"\\begin{{center}}\n{{{style['name']}\\bfseries {esc(p.name) or 'Your Name'}}}\\\\[3pt]\n")
-    out.append(" $|$ ".join(contact) + "\n\\end{center}\n\\vspace{-8pt}\n")
 
-    sections = _sections(p)
-    out.extend(sections[name] for name in _ORDERS[opts.template] if name in sections)
+    if opts.preamble:
+        # The user's own template: their preamble, standard commands so its styling of them applies
+        out = [check_preamble(opts.preamble), "\\begin{document}\n"]
+        out.append(f"\\begin{{center}}\n{{\\Large\\bfseries {esc(p.name) or 'Your Name'}}}\\\\[3pt]\n")
+        out.append(" $|$ ".join(contact) + "\n\\end{center}\n")
+        sections = _sections(p, head=lambda title: f"\\section*{{{title}}}\n", env="itemize")
+    else:
+        out = [_preamble(opts)]
+        out.append(f"\\begin{{center}}\n{{{style['name']}\\bfseries {esc(p.name) or 'Your Name'}}}\\\\[3pt]\n")
+        out.append(" $|$ ".join(contact) + "\n\\end{center}\n\\vspace{-8pt}\n")
+        sections = _sections(p)
 
+    out.extend(sections[name] for name in section_order(opts) if name in sections)
     out.append("\\end{document}\n")
     return "".join(out)
 

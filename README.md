@@ -233,6 +233,9 @@ npm run dev
    - `QDRANT_URL`: Your cluster URL from [Qdrant Cloud](https://cloud.qdrant.io)
    - `QDRANT_API_KEY`: Your Qdrant Cloud API key
    - `GROQ_API_KEY`: Your Groq key (the LLM used for chat and the resume agents)
+   - Optional: `ANTHROPIC_API_KEY`: makes Claude the first model to answer. If Claude fails for any reason (no credit,
+     expired key, overload, outage), Groq answers instead without any notice to the user. See
+     [Claude API key](#claude-api-key) below.
    - `JWT_SECRET`: **Required.** A long random string that signs login tokens
      (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Without it everyone is logged out on every restart.
    - `ADMIN_EMAIL` and `ADMIN_PASSWORD`: **Set both.** At startup this account is created (or its password is reset to
@@ -257,6 +260,38 @@ npm run dev
 5. Click **Create Web Service**. Your backend will be live at `https://production-rag-agent.onrender.com`.
 6. Log in with the admin account. Once you've signed in, you can remove `ADMIN_PASSWORD` from the environment: the
    admin flag stays on the account (setting it again later resets the password to that value).
+
+#### Claude API key
+
+With `ANTHROPIC_API_KEY` set, chat answers, comparisons and the resume agents use Claude (`claude-opus-5-5`) first.
+The Groq → Gemini chain stays behind it: when a Claude call fails, the same request is answered by Groq and the user
+sees a normal answer with no "model switched" notice. Follow-up question rewriting and image questions keep using the
+small Groq and Gemini models.
+
+1. Sign in at [console.anthropic.com](https://console.anthropic.com) and add credit under **Settings → Billing**. API
+   calls fail without credit, and every request would then silently go to Groq.
+2. Open **Settings → API keys → Create key** and give it a name you'll recognise, such as `production-rag-agent`.
+3. **Workspace (scope).** Every key belongs to one workspace of your organization:
+   - **Default**: the workspace every organization has. Fine for a personal project; the key shares the
+     organization's rate and spend limits with any other key in Default.
+   - **A workspace of its own** (create it under **Settings → Workspaces**, e.g. `production-rag-agent`): recommended
+     for a deployment. You can give the workspace its own monthly spend limit and rate limits, see its usage
+     separately, and remove it without touching anything else. The key can only be used inside that workspace.
+4. **Expiry.**
+   - **No expiration (long-lived)**: recommended for the Render server. It keeps working until you delete it.
+   - **Expiring key**: safer if it might leak, but when it expires Claude stops answering and the app quietly runs on
+     Groq. Note the expiry date and replace the key before then.
+
+   Either way, rotate it if it may have been exposed: create a new key, update `ANTHROPIC_API_KEY` on Render, then
+   delete the old key in the Console.
+5. Copy the key (it starts with `sk-ant-`); the Console shows it only once. On Render open the backend service →
+   **Environment** → add `ANTHROPIC_API_KEY` with the key → **Save**. Render redeploys with Claude in front.
+6. To check which model is answering, sign in as the admin and open **Settings**. The query metrics list the provider
+   and model for each answer and how often a backup model was used. A lot of `groq` answers means Claude calls are
+   failing; the backend log says why.
+
+Optional settings: `CLAUDE_MODEL` (default `claude-opus-5-5`) and `CLAUDE_EFFORT` (`low` | `medium` | `high`, default
+`medium`; higher is more thorough and slower). Remove `ANTHROPIC_API_KEY` to go back to Groq only.
 
 **Login lockout:** wrong guesses against one account are capped (12 per 15 minutes). The browser you normally use is
 remembered with a signed device token, so someone guessing your password elsewhere can't lock you out of it.

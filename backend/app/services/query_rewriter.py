@@ -69,7 +69,7 @@ async def condense_question(query: str, history: list[BaseMessage]) -> str:
             HumanMessage(content=f"Conversation:\n{_render_history(history)}\n\nLast question: {query}"),
         ]
         response = await asyncio.wait_for(llm.ainvoke(messages), timeout=_TIMEOUT_SECONDS)
-        content = response.content if isinstance(response.content, str) else str(response.content)
+        content = response.text
         condensed = _clean(content, query)
         if condensed != query:
             logger.debug("condense_question: %r -> %r", query[:80], condensed[:120])

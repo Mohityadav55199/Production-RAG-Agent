@@ -746,6 +746,22 @@ class TestUploads:
         assert all("/" not in d["filename"] for d in docs)
         assert projects and all("/" in d["filename"] for d in projects)
 
+    def test_documents_list_reports_storage_used_and_the_limit(self, client, users):
+        body = client.get("/documents?limit=1", headers=users["alice"]).json()
+        assert body["storage_limit"] == 500 * 1024 * 1024
+        assert body["storage_used"] >= 10                          # every document counts, not just this page
+
+    def test_an_upload_that_would_exceed_the_storage_limit_is_refused(self, client, users, monkeypatch):
+        from app.config import get_settings
+
+        monkeypatch.setattr(get_settings(), "STORAGE_LIMIT_MB", 1)
+        r = client.post("/upload", headers=users["alice"],
+                        files={"files": ("big.txt", b"Too much text for what is left. " * 40_000)})
+        assert r.status_code == 413
+        assert "left of 1 MB" in r.json()["detail"]
+        monkeypatch.setattr(get_settings(), "STORAGE_LIMIT_MB", 0)    # 0 = unlimited
+        assert client.get("/documents", headers=users["alice"]).json()["storage_limit"] == 0
+
 
 class TestDurableUploads:
     """Uploads are queued with their bytes, so a restart mid-processing resumes instead of losing the file."""
@@ -988,6 +1004,68 @@ class TestResumeEditing:
         d = client.get(f"/resume/generations/{seeded['gen']}", headers=users["alice"]).json()
         assert d["job"]["id"] == first["id"]
         assert client.post(url, headers=users["bob"]).status_code == 404
+
+    def test_layouts_can_be_imported_saved_used_and_deleted(self, client, users, seeded, monkeypatch):
+        import pymupdf
+
+        from app.api import resume as resume_api
+
+        # A PDF resume: its look becomes a layout
+        doc = pymupdf.open()
+        page = doc.new_page(width=612, height=792)
+        y = 60
+        for heading in ("Education", "Experience"):
+            page.insert_text((54, y), heading.upper(), fontname="helv", fontsize=13)
+            y += 20
+            for _ in range(4):
+                page.insert_text((54, y), "Delivered a measurable result for the team this quarter.", fontname="helv", fontsize=11)
+                y += 15
+        pdf = doc.tobytes()
+        r = client.post("/resume/layouts/import", headers=users["alice"], files={"file": ("mine.pdf", pdf)})
+        assert r.status_code == 201, r.text
+        from_pdf = r.json()
+        assert from_pdf["source"] == "pdf" and from_pdf["options"]["font"] == "sans"
+        assert from_pdf["options"]["section_order"][:2] == ["education", "experience"] and from_pdf["notes"]
+
+        # A .tex template: only its checked preamble is kept
+        tex = b"\\documentclass[11pt]{article}\n\\usepackage{enumitem}\n\\begin{document}Old\\end{document}"
+        r = client.post("/resume/layouts/import", headers=users["alice"], files={"file": ("cv.tex", tex)}, data={"name": "My LaTeX"})
+        assert r.status_code == 201, r.text
+        latex_layout = r.json()
+        assert latex_layout["name"] == "My LaTeX" and latex_layout["has_template"] is True
+        assert latex_layout["options"]["preamble"] is None                         # never sent back to the browser
+
+        bad = client.post("/resume/layouts/import", headers=users["alice"],
+                          files={"file": ("evil.tex", b"\\documentclass{article}\\input{/etc/passwd}\\begin{document}")})
+        assert bad.status_code == 422 and "only TeX" in bad.json()["detail"]
+        assert client.post("/resume/layouts/import", headers=users["alice"], files={"file": ("x.docx", b"x")}).status_code == 415
+
+        saved = client.post("/resume/layouts", headers=users["alice"],
+                            json={"name": "Compact sans", "options": {"template": "compact", "font": "sans"}}).json()
+        names = [l["name"] for l in client.get("/resume/layouts", headers=users["alice"]).json()]
+        assert {"Compact sans", "My LaTeX", "mine"} <= set(names)
+        assert client.get("/resume/layouts", headers=users["bob"]).json() == []
+
+        # Re-scoring with the LaTeX layout renders inside its template; a preamble from the client is ignored
+        captured = {}
+
+        async def fake_score(profile, options, jd, jd_text, with_fit=True):
+            captured["preamble"] = options.preamble
+            return {"score": 80, "tex": "T", "pdf": None, "warnings": [], "compile_error": "", "compile_failed": False,
+                    "report": {"total": 80, "has_jd": True, "pdf_checked": False, "matched": [], "fixes": [],
+                               "missing_must": [], "missing_nice": [], "components": []}}
+
+        monkeypatch.setattr(resume_api, "score_profile", fake_score)
+        url = f"/resume/generations/{seeded['gen']}/rescore"
+        sneaky = {**latex_layout["options"], "preamble": "\\documentclass{article}\\input{/etc/passwd}"}
+        assert client.post(url, headers=users["alice"], json={"draft": seeded["profile"], "options": sneaky}).status_code == 200
+        assert captured["preamble"].startswith("\\documentclass[11pt]{article}") and "passwd" not in captured["preamble"]
+        assert client.post(url, headers=users["alice"],
+                           json={"draft": seeded["profile"], "options": {"preamble": "\\documentclass{x}"}}).status_code == 200
+        assert captured["preamble"] is None                                           # no layout id: built-in
+
+        assert client.delete(f"/resume/layouts/{saved['id']}", headers=users["bob"]).status_code == 404
+        assert client.delete(f"/resume/layouts/{saved['id']}", headers=users["alice"]).status_code == 204
 
 
 def test_root_says_the_api_is_running(client):

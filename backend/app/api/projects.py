@@ -23,6 +23,7 @@ from app.services.project_import import (
     fetch_github_project,
 )
 from app.services.project_service import delete_project, list_projects
+from app.services.quota import enforce_storage_quota
 from app.services.scope_service import list_sources
 from app.utils.logging import get_logger
 
@@ -61,7 +62,11 @@ async def _ingest_in_background(project: ProjectFiles, user_id: str) -> None:
         logger.exception("Background ingestion of project '%s' crashed", project.project_name)
 
 
-def _queue(project: ProjectFiles, user_id: str) -> ProjectImportResponse:
+async def _queue(project: ProjectFiles, user: CurrentUser) -> ProjectImportResponse:
+    await enforce_storage_quota(
+        user, adding=sum(len(data) for _, data in project.files), replacing_project=project.project_name
+    )
+    user_id = user.key
     task = asyncio.create_task(_ingest_in_background(project, user_id))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
@@ -119,7 +124,7 @@ async def import_github(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Could not download repository: {type(exc).__name__}: {exc}",
         ) from exc
-    return _queue(project, user.key)
+    return await _queue(project, user)
 
 
 @router.post("/zip", response_model=ProjectImportResponse, summary="Import a project .zip archive")
@@ -137,4 +142,4 @@ async def import_zip(
         project = await asyncio.to_thread(extract_project_from_zip, content, project_name)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return _queue(project, user.key)
+    return await _queue(project, user)

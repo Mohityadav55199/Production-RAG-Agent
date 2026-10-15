@@ -402,8 +402,15 @@ async def score_profile(
     tex = render_latex(profile, options)
 
     pdf, compile_error = (None, "")
+    template_fallback = False
     if compiler_available():
         pdf, compile_error = await compile_pdf(tex)
+        if pdf is None and options is not None and options.preamble:
+            # The user's own template didn't compile with this content: use the built-in layout instead
+            fallback = options.model_copy(update={"preamble": None})
+            tex = render_latex(profile, fallback)
+            pdf, compile_error = await compile_pdf(tex)
+            template_fallback = pdf is not None
 
     if pdf:
         text, meta = await asyncio.to_thread(ats.pdf_text_and_meta, pdf)
@@ -420,6 +427,8 @@ async def score_profile(
     if compile_failed:
         first_line = next((ln for ln in compile_error.splitlines() if ln.startswith("!")), compile_error[:120])
         warnings.append(f"The LaTeX could not be compiled, so there is nothing to download ({first_line.strip()}).")
+    if template_fallback:
+        warnings.append("Your base template could not be compiled with this content, so the built-in layout was used.")
     dropped = unsupported_characters(profile)
     if dropped:
         warnings.append(

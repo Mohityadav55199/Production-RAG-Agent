@@ -23,6 +23,7 @@ from app.schemas.document_management import (
     DocumentSummary,
 )
 from app.services.asset_service import preview_assets
+from app.services.quota import storage_limit_bytes, storage_used_bytes
 from app.services.vector_service import delete_by_document_id
 from app.utils.logging import get_logger
 
@@ -109,6 +110,8 @@ async def list_documents(
         limit=limit,
         pages=pages,
         documents=summaries,
+        storage_used=await storage_used_bytes(user_id),
+        storage_limit=storage_limit_bytes(),
     )
 
 

@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     FALLBACK_LLM_TEMPERATURE: float = 0.1
 
     # ── Provider Specific Keys & Models ────────────────────────────────────────
+    # Claude answers first when this key is set; if it fails, Groq answers instead without any notice.
+    # How to create the key (long-lived vs expiring, workspace scope): see "Claude API key" in README.md
+    ANTHROPIC_API_KEY: str = ""
+    CLAUDE_MODEL: str = "claude-opus-5-5"
+    CLAUDE_EFFORT: str = "medium"          # "low" | "medium" | "high" (more = slower, more thorough)
+
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "openai/gpt-oss-120b"
     GROQ_REASONING_EFFORT: str = "low"     # gpt-oss models only: "low" | "medium" | "high" (more = slower)
@@ -145,6 +151,7 @@ class Settings(BaseSettings):
     # ── Upload limits ──────────────────────────────────────────────────────────
     MAX_UPLOAD_SIZE_MB: int = 50            # per-file size limit
     MAX_FILES_PER_UPLOAD: int = 10
+    STORAGE_LIMIT_MB: int = 500             # total size of one user's documents and imported projects (0 = unlimited)
     # ── Auth ──────────────────────────────────────────────────────────────────
     JWT_SECRET: str | None = None           # REQUIRED in production; a random one is used (with a warning) if unset
     JWT_EXPIRE_HOURS: int = 24 * 7

@@ -21,6 +21,8 @@ def settings(monkeypatch):
         monkeypatch.setattr(s, name, Settings.model_fields[name].default)
     monkeypatch.setattr(s, "GROQ_API_KEY", "gsk_test")
     monkeypatch.setattr(s, "GOOGLE_API_KEY", "g_test")
+    monkeypatch.setattr(s, "ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr(s, "CLAUDE_MODEL", Settings.model_fields["CLAUDE_MODEL"].default)
     monkeypatch.setattr(llm_factory, "_groq_models", None)
     monkeypatch.setattr(llm_factory, "_warned", set())
     return s
@@ -145,3 +147,58 @@ def test_streaming_answer_falls_through_and_reports_the_switch(settings, monkeyp
 def test_vision_chain_is_gemini_only_and_replaces_retired_names(settings, monkeypatch):
     monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-1.5-flash")
     assert chain_of(llm_factory.get_vision_llm()) == [GEMINI, ("gemini", "gemini-2.5-flash-lite")]
+
+
+CLAUDE = ("anthropic", "claude-opus-5-5")
+
+
+def test_claude_leads_when_its_key_is_set(settings, monkeypatch):
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test")
+    assert chain_of(llm_factory.get_configured_llm()) == [CLAUDE, OSS_120B, OSS_20B, GEMINI]
+    # A request for a specific provider or model is honoured as asked
+    assert chain_of(llm_factory.get_configured_llm(requested_provider="groq"))[0] == OSS_120B
+    # The rewrite and vision chains stay on the small, fast models
+    assert chain_of(llm_factory.get_rewrite_llm())[0] == OSS_20B
+
+
+def test_claude_is_called_with_adaptive_thinking_and_effort_not_temperature(settings, monkeypatch):
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test")
+    llm = llm_factory.build_chat_model("anthropic", "claude-opus-5-5", "sk-ant-test", temperature=0.1)
+    assert llm.thinking == {"type": "adaptive"}
+    assert llm.output_config == {"effort": "medium"}
+    assert llm.temperature is None and llm.max_retries == 1
+
+
+def test_claude_handing_over_to_groq_is_silent(settings, monkeypatch):
+    from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+    from langchain_core.messages import AIMessage
+
+    class Down(GenericFakeChatModel):
+        async def _astream(self, *args, **kwargs):
+            raise RuntimeError("Error code: 529 - overloaded_error")
+            yield  # pragma: no cover
+
+    def fake_model(provider, model_name, **kwargs):
+        if provider == "anthropic":
+            return Down(messages=iter([]))
+        return GenericFakeChatModel(messages=iter([AIMessage(content="groq answer")]))
+
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setattr(llm_factory, "build_chat_model", fake_model)
+
+    async def run():
+        tokens, notices, backups = [], [], []
+        async for ev in llm_factory.get_configured_llm().astream_events("hi", version="v2"):
+            if ev["event"] == "on_chat_model_start":
+                if ev["metadata"].get("is_fallback") or "fallback_llm" in ev.get("tags", []):
+                    notices.append(ev["metadata"]["model"])
+                if ev["metadata"].get("backup"):
+                    backups.append(ev["metadata"]["model"])
+            if ev["event"] == "on_chat_model_stream":
+                tokens.append(ev["data"]["chunk"].content)
+        return "".join(tokens), notices, backups
+
+    text, notices, backups = asyncio.run(run())
+    assert text == "groq answer"
+    assert notices == []                          # nothing tells the user
+    assert backups == ["openai/gpt-oss-120b"]     # the metrics still record it

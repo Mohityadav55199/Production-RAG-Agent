@@ -82,13 +82,57 @@ export interface TailorResult {
 
 export type TemplateName = "classic" | "compact" | "skills_first" | "student";
 
+export type SectionName = "summary" | "skills" | "experience" | "projects" | "education" | "certifications" | "achievements";
+
 export interface RenderOptions {
   template: TemplateName;
   font_pt: 10 | 11 | 12;
   margin_in: 0.5 | 0.6 | 0.75 | 1;
+  font?: "serif" | "sans";
+  /** Section order, e.g. copied from your own PDF; sections it leaves out follow in the template's order. */
+  section_order?: SectionName[] | null;
+  /** A saved layout; when it holds your own LaTeX template, the server renders inside it. */
+  layout_id?: string | null;
+  layout_name?: string | null;
+  /** Set by the server from the saved layout; anything sent from here is ignored. */
+  preamble?: string | null;
 }
 
-export const DEFAULT_RENDER_OPTIONS: RenderOptions = { template: "classic", font_pt: 10, margin_in: 0.6 };
+export interface SavedLayout {
+  id: string;
+  name: string;
+  source: "saved" | "latex" | "pdf";
+  has_template: boolean;
+  options: RenderOptions;
+  created_at: string | null;
+  notes?: string[];
+}
+
+export function listLayouts(): Promise<SavedLayout[]> {
+  return apiFetch<SavedLayout[]>("/resume/layouts");
+}
+
+export function saveLayout(name: string, options: RenderOptions): Promise<SavedLayout> {
+  return apiFetch<SavedLayout>("/resume/layouts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, options: { ...options, preamble: null } }),
+  });
+}
+
+/** Make a layout from your own resume: a .tex (its template) or a .pdf (its look). */
+export function importLayout(file: File, name = ""): Promise<SavedLayout> {
+  const form = new FormData();
+  form.append("file", file);
+  if (name) form.append("name", name);
+  return apiFetch<SavedLayout>("/resume/layouts/import", { method: "POST", body: form, timeout: 120000 });
+}
+
+export function deleteLayout(id: string): Promise<void> {
+  return apiFetch<void>(`/resume/layouts/${id}`, { method: "DELETE" });
+}
+
+export const DEFAULT_RENDER_OPTIONS: RenderOptions = { template: "classic", font_pt: 10, margin_in: 0.6, font: "serif" };
 
 export interface ResumeProfile {
   name: string;

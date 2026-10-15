@@ -57,3 +57,57 @@ async def enforce_daily_quota(user: CurrentUser, kind: str, adding: int = 1) -> 
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Daily limit reached ({limit} {noun} per 24 hours). Try again tomorrow.",
         )
+
+
+# ── Storage ──────────────────────────────────────────────────────────────────
+
+def storage_limit_bytes() -> int:
+    """Each user's storage allowance in bytes; 0 means unlimited."""
+    return max(0, get_settings().STORAGE_LIMIT_MB) * 1024 * 1024
+
+
+async def storage_used_bytes(user_key: str | None, project_name: str | None = None) -> int:
+    """Total size of *user_key*'s documents, or only of one imported project's files."""
+    query = select(func.coalesce(func.sum(Document.file_size), 0)).where(Document.user_id == user_key)
+    if project_name is not None:
+        query = query.where(Document.filename.like(f"{_escape_like(project_name)}/%", escape="\\"))
+    async with get_db_session() as session:
+        return int(await session.scalar(query) or 0)
+
+
+def format_bytes(n: int) -> str:
+    """1536 -> '1.5 KB' (matches the size format the app shows)."""
+    if n < 1024:
+        return f"{n} B"
+    size = float(n)
+    for unit in ("KB", "MB", "GB"):
+        size /= 1024
+        if size < 1024 or unit == "GB":
+            break
+    return f"{size:.1f}".removesuffix(".0") + f" {unit}"
+
+
+def _escape_like(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def enforce_storage_quota(user: CurrentUser, adding: int, replacing_project: str | None = None) -> None:
+    """Raise HTTP 413 when *adding* bytes would take *user* past their storage allowance.
+
+    Re-importing a project replaces it, so its current files don't count against the new import.
+    """
+    limit = storage_limit_bytes()
+    if limit <= 0:
+        return
+    used = await storage_used_bytes(user.key)
+    if replacing_project:
+        used -= await storage_used_bytes(user.key, replacing_project)
+    if used + adding > limit:
+        left = max(0, limit - used)
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"Not enough storage: {format_bytes(left)} left of {format_bytes(limit)}, "
+                f"and this needs {format_bytes(adding)}. Delete some documents to make room."
+            ),
+        )

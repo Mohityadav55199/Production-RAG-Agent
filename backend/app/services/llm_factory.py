@@ -1,9 +1,12 @@
 """
 LLM Factory & Resilient Fallback Orchestrator.
 
-Builds chat models for Groq and Google Gemini and chains them so a request still gets an answer when
-a model is rate limited, down, or retired. The chain is built in; no environment variable is needed:
+Builds chat models for Claude (Anthropic), Groq and Google Gemini and chains them so a request still
+gets an answer when a model is rate limited, down, or retired. The chain is built in; no environment
+variable is needed:
 
+  0. Claude (CLAUDE_MODEL), only when ANTHROPIC_API_KEY is set. If it fails the next model answers
+     silently: no "model switched" notice is shown, the answer simply comes from Groq.
   1. the configured primary model (PRIMARY_LLM_MODEL / GROQ_MODEL / GEMINI_MODEL, or the built-in default),
   2. any extra FALLBACK_LLM_MODELS (optional),
   3. BUILT_IN_CHAIN, always appended.
@@ -68,7 +71,13 @@ RETIRED_MODELS: dict[str, str] = {
     "gemini-1.5-pro": "gemini-2.5-flash",
 }
 
-_PROVIDER_ALIASES = {"google": "gemini", "google-genai": "gemini"}
+_PROVIDER_ALIASES = {"google": "gemini", "google-genai": "gemini", "claude": "anthropic"}
+_PROVIDERS = ("anthropic", "groq", "gemini")
+
+# Room for Claude's thinking plus a long answer
+_CLAUDE_MAX_TOKENS = 16000
+# A slow or unreachable Claude gives way to Groq instead of keeping the user waiting
+_CLAUDE_TIMEOUT_SECONDS = 60.0
 
 # Groq's live model ids; None until fetched (then nothing is filtered out)
 _groq_models: set[str] | None = None
@@ -111,6 +120,24 @@ def build_chat_model(
             **extra,
         )
 
+    elif prov in ("anthropic", "claude"):
+        from langchain_anthropic import ChatAnthropic
+
+        # Thinking is adaptive on current Claude models (it cannot be switched off and they reject
+        # temperature), so depth is set with effort instead. One retry, then the chain moves on.
+        effort = (get_settings().CLAUDE_EFFORT or "medium").strip().lower()
+        return ChatAnthropic(
+            model=model_name,
+            anthropic_api_key=api_key or None,
+            max_tokens=_CLAUDE_MAX_TOKENS,
+            thinking={"type": "adaptive"},
+            output_config={"effort": effort},
+            streaming=streaming,
+            disable_streaming=disable_streaming,
+            default_request_timeout=_CLAUDE_TIMEOUT_SECONDS,
+            max_retries=1,
+        )
+
     elif prov in ("gemini", "google", "google-genai"):
         from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -125,7 +152,7 @@ def build_chat_model(
         )
 
     else:
-        raise ValueError(f"Unsupported LLM provider: {provider!r}. Supported: 'groq', 'gemini'.")
+        raise ValueError(f"Unsupported LLM provider: {provider!r}. Supported: 'anthropic', 'groq', 'gemini'.")
 
 
 def _warn_once(key: str, message: str, *args) -> None:
@@ -178,6 +205,8 @@ async def keep_groq_models_fresh(interval_seconds: float = 6 * 3600) -> None:
 
 def _api_key(provider: str) -> str:
     s = get_settings()
+    if provider == "anthropic":
+        return s.ANTHROPIC_API_KEY
     return s.GROQ_API_KEY if provider == "groq" else s.GOOGLE_API_KEY
 
 
@@ -196,7 +225,7 @@ def _parse_entry(entry: str, default_provider: str) -> tuple[str, str] | None:
     if not entry:
         return None
     prov, sep, mod = entry.partition(":")
-    if sep and prov.strip().lower() in ("groq", "gemini", *_PROVIDER_ALIASES):
+    if sep and prov.strip().lower() in (*_PROVIDERS, *_PROVIDER_ALIASES):
         return _normalise_provider(prov), mod.strip()
     return default_provider, entry
 
@@ -217,7 +246,7 @@ def model_chain(
     for provider, model in ([primary] if primary else []) + extra + list(built_in):
         provider = _normalise_provider(provider)
         model = resolve_model(provider, model)
-        if provider not in ("groq", "gemini") or not model or model in seen:
+        if provider not in _PROVIDERS or not model or model in seen:
             continue
         seen.add(model)
         if _usable(provider, model):
@@ -228,10 +257,10 @@ def model_chain(
 def _primary_choice(requested_provider: str | None, requested_model: str | None) -> tuple[str, str] | None:
     s = get_settings()
     provider = _normalise_provider(requested_provider or s.PRIMARY_LLM_PROVIDER or "auto")
-    if provider not in ("groq", "gemini"):  # "auto" or anything unknown
+    if provider not in _PROVIDERS:  # "auto" or anything unknown
         provider = "groq" if s.GROQ_API_KEY else "gemini"
     configured = s.PRIMARY_LLM_MODEL if _normalise_provider(s.PRIMARY_LLM_PROVIDER) == provider else ""
-    per_provider = s.GROQ_MODEL if provider == "groq" else s.GEMINI_MODEL
+    per_provider = {"anthropic": s.CLAUDE_MODEL, "groq": s.GROQ_MODEL}.get(provider, s.GEMINI_MODEL)
     model = requested_model or configured or per_provider
     return (provider, model) if model else None
 
@@ -244,8 +273,11 @@ def _chain_llm(
 ) -> BaseChatModel:
     if not chain:
         raise ValueError(
-            "No language model is available: set GROQ_API_KEY or GOOGLE_API_KEY on the server."
+            "No language model is available: set ANTHROPIC_API_KEY, GROQ_API_KEY or GOOGLE_API_KEY on the server."
         )
+    # Claude handing over to Groq is silent: nothing is tagged as a fallback, so no notice is shown
+    # ("backup" still records the switch in the metrics).
+    tag_fallbacks = tag_fallbacks and chain[0][0] != "anthropic"
     runnables = []
     for i, (provider, model) in enumerate(chain):
         is_fallback = tag_fallbacks and i > 0
@@ -259,7 +291,7 @@ def _chain_llm(
                 disable_streaming=not streaming,
             ).with_config(
                 tags=["fallback_llm" if is_fallback else "primary_llm", f"model:{model}"],
-                metadata={"is_fallback": is_fallback, "model": model, "provider": provider},
+                metadata={"is_fallback": is_fallback, "backup": i > 0, "model": model, "provider": provider},
             )
         )
     if len(runnables) == 1:
@@ -285,6 +317,11 @@ def get_configured_llm(
         raw = settings.FALLBACK_LLM_MODELS or settings.FALLBACK_LLM_MODEL or ""
         extra = [e for e in (_parse_entry(x, default_provider) for x in raw.split(",")) if e]
         built_in = BUILT_IN_CHAIN
+    # Claude leads whenever it is keyed, unless a request asked for a specific provider or model
+    # (model_chain drops it when ANTHROPIC_API_KEY is not set).
+    if not (requested_provider or requested_model):
+        extra = ([primary] if primary else []) + extra
+        primary = ("anthropic", settings.CLAUDE_MODEL)
     chain = model_chain(primary, extra, built_in)
     if not settings.ENABLE_LLM_FALLBACK and not chain:
         chain = model_chain(None, [], BUILT_IN_CHAIN)[:1]   # the primary is unusable: still answer

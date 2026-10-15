@@ -16,6 +16,8 @@ services:
       # are built into the code, which also replaces retired model names left in the environment.
       - key: GROQ_API_KEY
         sync: false
+      - key: ANTHROPIC_API_KEY   # optional: Claude answers first, Groq takes over silently if it fails
+        sync: false
       - key: GOOGLE_API_KEY
         sync: false
       - key: GEMINI_EMBEDDING_MODEL

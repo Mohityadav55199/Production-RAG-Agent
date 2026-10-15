@@ -304,7 +304,7 @@ async def _generate_node(state: RAGState) -> dict:
     )
 
     response = await llm.ainvoke(messages)
-    answer: str = response.content if isinstance(response.content, str) else str(response.content)
+    answer: str = response.text   # text blocks only (Claude also returns thinking blocks)
 
     return {"answer": answer}
 
@@ -426,7 +426,7 @@ async def stream_rag(
                 meta = event.get("metadata", {})
                 timer.provider = meta.get("provider") or timer.provider
                 timer.model = meta.get("model") or meta.get("ls_model_name") or timer.model
-                timer.fallback_used = timer.fallback_used or bool(meta.get("is_fallback"))
+                timer.fallback_used = timer.fallback_used or bool(meta.get("is_fallback") or meta.get("backup"))
             elif kind == "on_chat_model_end" and in_generate:
                 output = event.get("data", {}).get("output")
                 timer.add_usage(getattr(output, "usage_metadata", None))
