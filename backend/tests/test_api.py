@@ -750,3 +750,9 @@ class TestResumeEditing:
         nope = client.post(f"/resume/generations/{seeded['gen']}/regenerate-bullet", headers=users["alice"],
                            json={"kind": "experience", "name": "Globex"})
         assert nope.status_code == 422 and "without inventing facts" in nope.json()["detail"]
+
+
+def test_root_says_the_api_is_running(client):
+    res = client.get("/")
+    assert res.status_code == 200
+    assert res.json()["status"] == "running" and res.json()["health"] == "/health"
