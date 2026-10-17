@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppProvider } from "@/lib/context/app-context";
 import { AuthProvider } from "@/lib/context/auth-context";
+import { ServerStatusProvider } from "@/lib/context/server-status-context";
+import { RenderServerBanner } from "@/components/layout/render-server-banner";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider, themeInitScript } from "@/components/layout/theme-provider";
 import "./globals.css";
@@ -35,12 +37,15 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
         <ThemeProvider>
-          <AuthProvider>
-            <AppProvider>
-              {children}
-              <Toaster richColors closeButton />
-            </AppProvider>
-          </AuthProvider>
+          <ServerStatusProvider>
+            <AuthProvider>
+              <AppProvider>
+                <RenderServerBanner />
+                {children}
+                <Toaster richColors closeButton />
+              </AppProvider>
+            </AuthProvider>
+          </ServerStatusProvider>
         </ThemeProvider>
       </body>
     </html>

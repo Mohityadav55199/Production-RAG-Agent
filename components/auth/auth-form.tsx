@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/context/auth-context";
+import { useServerStatus } from "@/lib/context/server-status-context";
 
 interface AuthFormProps {
   mode: "login" | "signup";
@@ -39,16 +40,30 @@ export function AuthForm({ mode }: AuthFormProps) {
   const copy = COPY[mode];
   const router = useRouter();
   const { status, login, signup } = useAuth();
+  const { isWaking, elapsedSeconds } = useServerStatus();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [busySeconds, setBusySeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "authed") router.replace("/rag");
   }, [status, router]);
+
+  // Track elapsed time during login/signup attempt to reassure users
+  useEffect(() => {
+    if (!busy) {
+      setBusySeconds(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setBusySeconds((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [busy]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,15 +162,39 @@ export function AuthForm({ mode }: AuthFormProps) {
                 </div>
               )}
 
+              {isWaking && !busy && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200 space-y-0.5">
+                  <p className="font-semibold flex items-center gap-1.5 text-amber-900 dark:text-amber-100">
+                    <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                    Render backend is waking up {elapsedSeconds > 0 ? `(~${elapsedSeconds}s)` : ""}
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-amber-800/90 dark:text-amber-300/90">
+                    Free tier instances sleep after inactivity. You can fill the form and submit; it will connect as soon as the server boots!
+                  </p>
+                </div>
+              )}
+
               {error && (
                 <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
                   {error}
                 </p>
               )}
 
+              {busy && busySeconds >= 2 && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200 space-y-0.5">
+                  <p className="font-semibold flex items-center gap-1.5 text-amber-900 dark:text-amber-100">
+                    <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                    Cold-starting server ({busySeconds}s elapsed)…
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-amber-800/90 dark:text-amber-300/90">
+                    Please don&apos;t refresh. Render free tier takes ~50s for the initial boot. You will be logged in immediately when ready.
+                  </p>
+                </div>
+              )}
+
               <Button type="submit" className="w-full" disabled={busy || !email.trim() || !password}>
                 {busy && <Loader2 className="size-4 animate-spin" />}
-                {busy ? copy.busy : copy.submit}
+                {busy ? (busySeconds >= 3 ? `Waking Render (${busySeconds}s)…` : copy.busy) : copy.submit}
               </Button>
             </form>
           </CardContent>

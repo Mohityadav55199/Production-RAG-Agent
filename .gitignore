@@ -46,3 +46,7 @@ backend/*.egg-info/
 backend/alembic/versions/__pycache__/
 qdrant_data/
 backend/qdrant_data/
+
+# Study material & docs
+/docs/
+docs/
