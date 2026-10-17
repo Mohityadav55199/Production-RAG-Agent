@@ -55,10 +55,7 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   // Track elapsed time during login/signup attempt to reassure users
   useEffect(() => {
-    if (!busy) {
-      setBusySeconds(0);
-      return;
-    }
+    if (!busy) return;
     const interval = setInterval(() => {
       setBusySeconds((s) => s + 1);
     }, 1000);
@@ -73,12 +70,14 @@ export function AuthForm({ mode }: AuthFormProps) {
       if (password !== confirm) return setError("Passwords do not match.");
     }
     setBusy(true);
+    setBusySeconds(0);
     try {
       await (mode === "login" ? login : signup)(email.trim(), password);
       router.replace("/rag");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       setBusy(false);
+      setBusySeconds(0);
     }
   };
 

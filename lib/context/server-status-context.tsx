@@ -37,7 +37,10 @@ export function ServerStatusProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const wakingRef = useRef(false);
-  wakingRef.current = isWaking;
+
+  useEffect(() => {
+    wakingRef.current = isWaking;
+  }, [isWaking]);
 
   const wakingStartTimeRef = useRef<number | null>(null);
 

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import {
-  AlertCircle,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -21,7 +20,6 @@ export function RenderServerBanner() {
     elapsedSeconds,
     justWokeUp,
     checkNow,
-    error,
   } = useServerStatus();
 
   const [dismissed, setDismissed] = useState(false);
