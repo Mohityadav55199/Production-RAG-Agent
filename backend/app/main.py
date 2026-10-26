@@ -159,7 +159,7 @@ def create_app() -> FastAPI:
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Process-Time-Ms"] = f"{elapsed_ms:.2f}"
         logger.info(
-            "%s %s → %d  (%.2f ms) [%s]",
+            "%s %s -> %d  (%.2f ms) [%s]",
             request.method,
             request.url.path,
             response.status_code,

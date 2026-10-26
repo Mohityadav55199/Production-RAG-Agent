@@ -33,7 +33,13 @@ def setup_logging(
         )
         datefmt = "%Y-%m-%dT%H:%M:%SZ"
 
-    handler = logging.StreamHandler(sys.stdout)
+    stream = sys.stdout
+    if hasattr(stream, "reconfigure"):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
+    handler = logging.StreamHandler(stream)
     handler.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
 
     root = logging.getLogger()
