@@ -26,7 +26,6 @@ const ServerStatusContext = createContext<ServerStatusContextValue | null>(null)
 
 const SLOW_THRESHOLD_MS = 2500;
 const RETRY_INTERVAL_MS = 3500;
-const BACKGROUND_POLL_MS = 45000;
 
 export function ServerStatusProvider({ children }: { children: ReactNode }) {
   const [isActive, setIsActive] = useState<boolean | null>(null);
@@ -128,9 +127,11 @@ export function ServerStatusProvider({ children }: { children: ReactNode }) {
 
       if (cancelled) return;
 
-      // If waking, poll quickly; if active, poll occasionally
-      const nextDelay = wakingRef.current ? RETRY_INTERVAL_MS : BACKGROUND_POLL_MS;
-      timer = setTimeout(run, nextDelay);
+      // Only poll repeatedly if the server is waking up (cold start).
+      // Once active, stop background polling so Render can spin down and conserve free hours.
+      if (wakingRef.current) {
+        timer = setTimeout(run, RETRY_INTERVAL_MS);
+      }
     };
 
     void run();
