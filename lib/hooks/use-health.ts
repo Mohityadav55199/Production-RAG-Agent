@@ -7,7 +7,9 @@ import type { HealthInfo } from "@/lib/types";
 // A check that answers instantly still shows the spinner briefly, so a click visibly did something
 const MIN_SPIN_MS = 600;
 
-export function useHealth(pollIntervalMs = 30000) {
+// No background polling by default: a periodic /health call keeps the Render free instance awake (burning free hours)
+// for as long as any tab is open. Checks run on mount and when a refresh button is pressed.
+export function useHealth(pollIntervalMs = 0) {
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [loading, setLoading] = useState(true);       // first check only
   const [refreshing, setRefreshing] = useState(false); // a check asked for with a refresh button

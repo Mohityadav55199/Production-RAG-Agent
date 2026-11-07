@@ -5,6 +5,9 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
+    # Render free tier: 750 instance hours/month, spins down after 15 min without inbound traffic.
+    # Do not add keep-warm pings (cron jobs, GitHub Actions, uptime monitors): they keep the instance awake and
+    # burn the free hours. The frontend only polls /health while the server is cold-starting.
     plan: free
     region: oregon
     envVars:
