@@ -38,7 +38,7 @@ async def wipe_database(force=False):
                 # If this fails, the postgres truncation will rollback!
                 try:
                     await q_client.delete_collection(settings.QDRANT_COLLECTION)
-                except Exception as e:
+                except Exception:
                     # Ignore if it doesn't exist
                     pass
                 

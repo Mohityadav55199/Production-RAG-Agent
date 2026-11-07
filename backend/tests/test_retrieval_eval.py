@@ -3,9 +3,7 @@ Unit tests for the RAG Retrieval Evaluation & Tuning Harness.
 Ensures dataset integrity, schema conformity, and retrieval metrics accuracy.
 """
 
-import json
 from pathlib import Path
-import pytest
 
 from eval.evaluate import (
     load_dataset,

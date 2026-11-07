@@ -23,11 +23,8 @@ import uuid
 from typing import AsyncGenerator, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, START, StateGraph
 
-from app.config import get_settings
-from app.schemas.query import SourceCitation
 from app.services.asset_service import images_for_sources
 from app.services.context_prep import tidy_chunks
 from app.services.conversation_service import save_answer

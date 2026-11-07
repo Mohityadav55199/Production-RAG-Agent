@@ -37,7 +37,7 @@ from app.services.resume.latex import (
 )
 from app.services.resume import grounding
 from app.services.resume.llm_utils import llm_json
-from app.services.resume.schemas import Education, Experience, JDAnalysis, Profile, Project, RenderOptions
+from app.services.resume.schemas import Experience, JDAnalysis, Profile, Project, RenderOptions
 from app.utils.errors import client_error_message
 from app.utils.logging import get_logger
 

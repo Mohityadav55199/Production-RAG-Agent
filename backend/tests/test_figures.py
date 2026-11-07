@@ -16,7 +16,7 @@ from app.services.parsers.figures import RawImage, build_figures, merge_captions
 from app.services.parsers.image_parser import ImageParser
 from app.services.parsers.pdf_parser import PDFParser
 from app.services.parsers.pptx_parser import PptxParser
-from tests.images import SENTENCE, encoded, pdf_with_images, png
+from tests.images import SENTENCE, pdf_with_images, png
 
 
 @pytest.fixture

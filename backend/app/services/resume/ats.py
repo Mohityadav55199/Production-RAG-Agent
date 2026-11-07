@@ -18,6 +18,9 @@ import re
 from dataclasses import dataclass, field
 
 from app.services.resume.schemas import JDAnalysis
+from app.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 WEIGHTS_WITH_JD = {"keywords": 45, "parsing": 25, "format": 15, "fit": 15}
 WEIGHTS_NO_JD = {"parsing": 60, "format": 40}
@@ -156,7 +159,7 @@ ACTION_VERBS = {
     "reduced", "increased", "launched", "delivered", "automated", "architected", "engineered", "integrated",
     "deployed", "migrated", "refactored", "analyzed", "collaborated", "mentored", "established", "streamlined",
     "spearheaded", "owned", "drove", "shipped", "wrote", "maintained", "configured", "tested", "debugged",
-    "resolved", "enhanced", "accelerated", "coordinated", "established", "initiated", "executed", "scaled",
+    "resolved", "enhanced", "accelerated", "coordinated", "initiated", "executed", "scaled",
     "authored", "researched", "trained", "secured", "monitored", "contributed", "achieved", "won", "ranked",
 }
 
@@ -212,7 +215,7 @@ def pdf_text_and_meta(pdf: bytes) -> tuple[str, dict]:
             texts.append(page.get_text("text", sort=True))
             meta["images"] += len(page.get_images())
             width = page.rect.width
-            for x0, y0, x1, y1, text, *_ in page.get_text("blocks"):
+            for x0, _y0, x1, _y1, text, *_ in page.get_text("blocks"):
                 if len(str(text).strip()) < 40:
                     continue
                 if x1 < width * 0.55:
@@ -340,8 +343,8 @@ async def match_skills_semantic(
             vecs = await embed_batch_with_retry(c_needed)
             for c, v in zip(c_needed, vecs):
                 _EMBED_SKILL_CACHE[c] = v
-        except Exception:
-            pass
+        except Exception:  # embeddings are an optional boost; fall back to keyword matching
+            logger.debug("skill embedding unavailable", exc_info=True)
 
     matched: set[str] = set()
     for t in target_terms:

@@ -1,3 +1,0 @@
-This is a small test document.
-It contains enough text to be parsed.
-Line 3 for extra measure.

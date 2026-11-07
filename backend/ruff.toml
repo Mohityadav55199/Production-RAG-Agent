@@ -1,0 +1,14 @@
+# Lint rules that catch real bugs (pyflakes, bugbear). Style is left to the formatter of your choice.
+target-version = "py312"
+line-length = 120
+extend-exclude = ["alembic/versions", "scripts/manual_tests", ".venv", "qdrant_data"]
+
+[lint]
+select = ["E9", "F", "B"]
+ignore = [
+    "B008",  # FastAPI's Depends()/Query() in argument defaults is the documented pattern
+    "B905",  # zip() without strict= is fine here
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["B011"]

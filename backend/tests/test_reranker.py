@@ -4,7 +4,6 @@ Validates token coverage, heading/section alignment, contiguous phrase boosts,
 and length damping.
 """
 
-import pytest
 from app.services.retrieval_service import RetrievedChunk, flash_rerank_chunks
 
 

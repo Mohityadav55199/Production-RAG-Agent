@@ -27,7 +27,6 @@ import argparse
 import asyncio
 import json
 import math
-import os
 import re
 import sys
 import time
@@ -42,7 +41,7 @@ BACKEND_DIR = SCRIPT_DIR.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.services.chunker import build_chunks, TextChunk
+from app.services.chunker import build_chunks
 
 
 # ── Data Models ───────────────────────────────────────────────────────────────

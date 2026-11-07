@@ -74,7 +74,7 @@ async def _create_document_record(
             await session.flush()
             await session.refresh(doc)
             return doc
-    except IntegrityError:
+    except IntegrityError as integrity_exc:
         # Another concurrent request inserted this file_hash between our check and insert.
         # Fall back to fetching the newly inserted document.
         async with get_db_session() as session:
@@ -83,7 +83,7 @@ async def _create_document_record(
                 select(Document).where(Document.file_hash == file_hash, Document.user_id == user_id).limit(1)
             )
             if not doc:
-                raise RuntimeError("IntegrityError caught but document not found on fallback.")
+                raise RuntimeError("IntegrityError caught but document not found on fallback.") from integrity_exc
             return doc
 
 

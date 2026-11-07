@@ -8,7 +8,6 @@ Implements exponential backoff, jitter, respects Retry-After headers, and tracks
 import asyncio
 import re
 import random
-from typing import Any
 
 from google.api_core import exceptions as google_exc
 
@@ -81,21 +80,18 @@ async def embed_batch_with_retry(
         except Exception as exc:
             # Determine if this is a transient, retryable error
             is_retryable = False
-            is_429 = False
             retry_after = None
 
             # Google API specific transient errors
             # ResourceExhausted is the concrete class for 429 in gRPC/Google APIs
             if isinstance(exc, google_exc.ResourceExhausted):
                 is_retryable = True
-                is_429 = True
                 metrics.record_429()
                 retry_after = _extract_retry_after(exc)
             elif isinstance(exc, google_exc.GoogleAPIError):
                 if exc.code in {429, 500, 502, 503, 504}:
                     is_retryable = True
                 if exc.code == 429:
-                    is_429 = True
                     metrics.record_429()
                 retry_after = _extract_retry_after(exc)
 

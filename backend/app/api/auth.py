@@ -133,8 +133,10 @@ async def signup(body: Credentials, request: Request) -> AuthResponse:
             await session.flush()
             if is_first:
                 await claim_existing_data(session, str(user.id))
-    except IntegrityError:
-        raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists. Try logging in.")
+    except IntegrityError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "An account with this email already exists. Try logging in."
+        ) from exc
     logger.info("New user registered: id=%s", user.id)
     if not user.email_verified:
         try:

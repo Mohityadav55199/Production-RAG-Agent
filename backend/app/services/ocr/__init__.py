@@ -17,3 +17,6 @@ ocr_service = OCRService(
 
 def get_ocr_service() -> OCRService:
     return ocr_service
+
+
+__all__ = ["OCRProvider", "OCRService", "PaddleOCRProvider", "TesseractProvider", "get_ocr_service", "ocr_service"]

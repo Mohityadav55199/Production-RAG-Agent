@@ -32,7 +32,7 @@ def num_key(n: str) -> str:
 # Tech terms that are also everyday words ("the rest of", "a swift reply", "spring 2024"). They only
 # count as a skill claim when written capitalised somewhere other than the start of the text.
 _EVERYDAY_TERMS = {"rest", "spring", "express", "swift", "rust", "combine", "flutter", "ruby", "go", "dart",
-                   "git", "rag", "agile", "scrum", "spark", "lambda", "helm", "dart", "vite"}
+                   "git", "rag", "agile", "scrum", "spark", "lambda", "helm", "vite"}
 
 # "at Google", "joined Meta", "at Acme Corp". "with"/"for" are left out: "with Product and Design" is a team.
 _ORG_RE = re.compile(r"\b(?:at|joined|joining)\s+((?:[A-Z][\w&.'-]*)(?:\s+[A-Z][\w&.'-]*){0,3})")

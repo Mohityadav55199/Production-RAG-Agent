@@ -1,7 +1,6 @@
 import asyncio
 from sqlalchemy import select
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Filter
 from app.db.postgres import get_db_session
 from app.db.models import Document, DocumentStatus
 from app.config import get_settings
