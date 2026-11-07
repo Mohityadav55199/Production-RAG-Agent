@@ -1,19 +1,19 @@
 <div align="center">
 
-# 🚀 Production RAG Agent
+# Production RAG Agent
 
 ### Enterprise-Grade Retrieval-Augmented Generation (RAG) Platform
 
-Build AI-powered knowledge assistants capable of ingesting, indexing, retrieving, and reasoning over your documents using **Google Gemini**, **LangGraph**, **FastAPI**, **Next.js 15**, **PostgreSQL**, and **Qdrant**.
+Build AI-powered knowledge assistants capable of ingesting, indexing, retrieving, and reasoning over your documents using **Google Gemini**, **LangGraph**, **FastAPI**, **Next.js 16**, **PostgreSQL**, and **Qdrant**.
 
 <p align="center">
-  <a href="https://productionragagent.vercel.app"><strong>🌐 Live Web App</strong></a> •
-  <a href="https://production-rag-agent.onrender.com/docs"><strong>📖 API Swagger Docs</strong></a> •
-  <a href="https://production-rag-agent.onrender.com/health"><strong>🩺 Health Endpoint</strong></a>
+  <a href="https://productionragagent.vercel.app"><strong>Live Web App</strong></a> •
+  <a href="https://production-rag-agent.onrender.com/docs"><strong>API Swagger Docs</strong></a> •
+  <a href="https://production-rag-agent.onrender.com/health"><strong>Health Endpoint</strong></a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Next.js-15-black?logo=next.js" alt="Next.js 15" />
+  <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js 16" />
   <img src="https://img.shields.io/badge/FastAPI-Production-009688?logo=fastapi" alt="FastAPI" />
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-blue?logo=python" alt="Python" />
   <img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript" alt="TypeScript" />
@@ -25,20 +25,26 @@ Build AI-powered knowledge assistants capable of ingesting, indexing, retrieving
 
 </div>
 
+> **Render free tier: expect a cold start.** The backend runs on Render's free plan, which puts the service to sleep
+> after 15 minutes without traffic. The first request after a pause takes **40 to 60 seconds** while the container
+> boots; the app shows a "Render backend is waking up" banner with a timer while it waits, and everything works normally
+> afterwards. Nothing pings the server to keep it awake (no cron job, GitHub Action or background polling), so it only
+> uses free instance hours while someone is actually using it. If the live demo looks stuck, wait a minute and retry.
+
 ---
 
-## 🌐 Live Production Deployments
+## Live Production Deployments
 
 | Component | Platform | URL | Status |
 |---|---|---|---|
-| **Frontend UI** | Vercel | [https://productionragagent.vercel.app](https://productionragagent.vercel.app) | 🟢 Live |
-| **Backend API** | Render | [https://production-rag-agent.onrender.com](https://production-rag-agent.onrender.com) | 🟢 Live |
-| **API Docs** | Swagger | [https://production-rag-agent.onrender.com/docs](https://production-rag-agent.onrender.com/docs) | 🟢 Live |
-| **Health API** | FastAPI | [https://production-rag-agent.onrender.com/health](https://production-rag-agent.onrender.com/health) | 🟢 Live |
+| **Frontend UI** | Vercel | [https://productionragagent.vercel.app](https://productionragagent.vercel.app) | Live |
+| **Backend API** | Render | [https://production-rag-agent.onrender.com](https://production-rag-agent.onrender.com) | Live |
+| **API Docs** | Swagger | [https://production-rag-agent.onrender.com/docs](https://production-rag-agent.onrender.com/docs) | Live |
+| **Health API** | FastAPI | [https://production-rag-agent.onrender.com/health](https://production-rag-agent.onrender.com/health) | Live |
 
 ---
 
-## 📖 Overview
+## Overview
 
 **Production RAG Agent** is a full-stack, enterprise-ready Retrieval-Augmented Generation (RAG) platform designed to build intelligent AI assistants over private documents and enterprise knowledge bases.
 
@@ -54,13 +60,13 @@ The project incorporates production engineering best practices including:
 
 ---
 
-## 🏗 Architecture
+## Architecture
 
 ```
                       User (Browser)
                             │
                             ▼
-           Next.js 15 Frontend (Vercel / Port 3000)
+           Next.js 16 Frontend (Vercel / Port 3000)
                             │
                   /api/* Proxy Rewrite
                             │
@@ -80,28 +86,28 @@ The project incorporates production engineering best practices including:
 
 ---
 
-## ⭐ Key Features
+## Key Features
 
-### 📂 Multi-Format Document Ingestion
+### Multi-Format Document Ingestion
 - Upload and index **PDF**, **DOCX**, **PPTX**, **XLSX**, **CSV**, **TXT**, and **Markdown**.
 - Automatic file validation, sha256 hash deduplication, and document status lifecycle tracking (`pending` → `parsing` → `chunking` → `embedding` → `indexing` → `completed`).
 
-### 🧠 Adaptive Semantic Chunking
+### Adaptive Semantic Chunking
 - Recursive chunk splitting with configurable sizes and overlap.
 - Deterministic chunk IDs to prevent duplicate embeddings.
 - Automatic resume capability for interrupted or failed indexing runs.
 
-### 🤖 LangGraph Context Construction & Gemini Reasoning
+### LangGraph Context Construction & Gemini Reasoning
 - Multi-step reasoning pipeline built with LangGraph.
 - Answers with Groq `openai/gpt-oss-120b` by default, falling back to `gpt-oss-20b` and then Gemini 2.5 Flash on rate limits; image questions go to Gemini.
 - High-dimensional vector representations with `models/gemini-embedding-001` (3072 dimensions).
 
-### 💬 Real-Time Streaming AI Chat
+### Real-Time Streaming AI Chat
 - Server-Sent Events (SSE) token streaming for responsive UX.
 - Rich Markdown rendering, syntax-highlighted code blocks, and one-click copy.
 - Inline source citations and relevance scores.
 
-### 🖼 Images
+### Images
 All four need `GOOGLE_API_KEY` (Gemini does the seeing); without it, text features keep working and image uploads fall back to OCR.
 - **Ask about an image:** attach, paste (Ctrl+V) or drag up to 3 images into the chat (an error screenshot, a diagram, a
   photo). Gemini sees them together with your retrieved documents or code. Images are downscaled in your browser, re-encoded
@@ -119,7 +125,7 @@ Limits (all configurable, see `backend/.env.example`): 3 images per question, 4 
 25 megapixels, 40 stored figures and 6 AI captions per document, and 40 image requests per user per hour. Stored images
 live in PostgreSQL (up to 1600 px plus a 320 px thumbnail each) and are deleted with their document.
 
-### 📝 Resume Tailoring
+### Resume Tailoring
 Build a resume library, paste a job description, and a LangGraph pipeline writes a tailored resume using **only facts from
 your own resumes** (code strips any skill, employer, project or number the library does not support), then scores it for ATS
 compatibility from the compiled PDF.
@@ -132,15 +138,15 @@ compatibility from the compiled PDF.
   estimated score gain) and *not in your library* (only gaining the skill closes them). Nothing is invented to raise the score.
 - **Download any draft** that compiled. Below the target score (82) the app flags it; the PDF itself carries no marker.
 
-### 📊 Real-Time Health & Storage Dashboard
+### Real-Time Health & Storage Dashboard
 - Live dependency status checks for FastAPI, Google Gemini, PostgreSQL, and Qdrant.
 - Real-time document count, chunk count, and storage utilization metrics.
 
 ---
 
-## ⚙ Technology Stack
+## Technology Stack
 
-- **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Lucide Icons
+- **Frontend**: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS, Lucide Icons
 - **Backend**: FastAPI, LangGraph, LangChain, Pydantic v2, SQLAlchemy 2.0 (Async)
 - **Vector Database**: Qdrant (Qdrant Cloud / Docker)
 - **Relational Database**: PostgreSQL (Neon Serverless / Supabase / Local)
@@ -149,7 +155,7 @@ compatibility from the compiled PDF.
 
 ---
 
-## 🚀 Quick Start (Local Development)
+## Quick Start (Local Development)
 
 ### 1. Clone Repository
 
@@ -219,7 +225,7 @@ npm run dev
 
 ---
 
-## ☁ Cloud Deployment Guide
+## Cloud Deployment Guide
 
 ### Part 1: Deploy Backend on Render (Docker)
 1. Log in to [Render Dashboard](https://dashboard.render.com/) → **New +** → **Web Service**.
@@ -301,7 +307,8 @@ the model embed your conversation in an image address. The answer shows where th
 you click **Load image**.
 
 > **Free-tier note:** Render's free instances sleep when idle, so the first request after a pause can take up to a
-> minute (the app shows "Waking up the server…"). Long streams (resume tailoring takes 1–3 minutes) can hit proxy
+> minute (the app shows "Waking up the server…"). That is intentional: nothing pings the backend to keep it awake
+> (no cron job, GitHub Action or background polling), so it only uses free instance hours while someone is using it. Long streams (resume tailoring takes 1–3 minutes) can hit proxy
 > time limits when routed through Vercel's `/api` rewrite; if you see that, set `NEXT_PUBLIC_API_URL` on Vercel to the
 > Render URL so the browser calls the backend directly, and set the backend's `CORS_ORIGINS` to your Vercel domain.
 
@@ -314,9 +321,43 @@ you click **Load image**.
 
 ---
 
-## 🧪 Testing
+## Security
 
-CI (`.github/workflows/ci.yml`) runs the backend tests, and the frontend type check, lint and build on every push.
+Short version of what the app does to protect users and the server. The full list, and how to report a problem, is in
+[SECURITY.md](SECURITY.md).
+
+- **Accounts:** passwords hashed with bcrypt; login uses signed JWTs; wrong guesses are capped per account
+  (12 per 15 minutes) with a signed device token so an attacker cannot lock out your usual browser.
+- **Uploads:** size limit, file-signature check (not just the extension), decompression-bomb checks for images, SVG
+  rejected, images re-encoded on the server so metadata and hidden payloads are dropped.
+- **Prompt injection:** images in AI answers are never fetched automatically, so a hostile document cannot make the model
+  leak a conversation through an image URL. The user clicks **Load image** to opt in.
+- **Abuse limits:** per-user quotas and rate limits, with the real client address resolved safely behind Vercel,
+  Cloudflare and Render.
+- **Data isolation:** documents, chats and resumes are scoped to the signed-in user.
+- **Supply chain:** pinned backend dependencies (`requirements.lock`), weekly Dependabot updates, and audits in CI.
+
+---
+
+## Testing
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request:
+
+| Job | What it checks |
+|---|---|
+| Backend lint | `ruff check` for bugs (unused code, bad exception handling) |
+| Backend tests | `pytest` against a real PostgreSQL 16 service, with LaTeX installed so the resume PDF tests run |
+| Frontend | type check, ESLint and a production build |
+| Dependency audit | `pip-audit` and `npm audit` (report only) |
+| Docker | builds the backend image once the checks above pass |
+
+CI runs on GitHub's own runners and never calls the Render backend, so it does not use the Render free-tier hours.
+
+Shortcut commands (run `make help` for the full list; see [CONTRIBUTING.md](CONTRIBUTING.md)):
+
+```bash
+make check      # lint + typecheck + backend tests, the same checks CI runs
+```
 
 ```bash
 # Backend (from backend/). The API tests need a PostgreSQL database whose NAME CONTAINS "test":
@@ -330,19 +371,18 @@ npm run typecheck && npm run lint && npm run build
 ```
 
 Without `TEST_DATABASE_URL` the API tests are skipped and the rest run. The PDF-compile tests need `pdflatex`
-(they run inside the Docker image). Older ad-hoc scripts that talk to a running server live in
-`backend/scripts/manual_tests/`.
+(they run inside the Docker image).
 
 Backend dependencies are pinned in `backend/requirements.lock` (used by the Docker build). To upgrade, install
 `requirements.txt` in a clean `python:3.12-slim` container and run `pip freeze > requirements.lock`.
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 Production-RAG-Agent/
-├── app/                        # Next.js 15 App Router pages
+├── app/                        # Next.js 16 App Router pages
 │   ├── chat/                   # AI Chat interface
 │   ├── collections/            # Knowledge collections
 │   ├── dashboard/              # Metrics & health status
@@ -360,6 +400,10 @@ Production-RAG-Agent/
 │   └── docker-compose.yml      # Local dev stack
 ├── components/                 # Reusable React UI components
 ├── lib/                        # Client API hooks & utils
+├── .github/workflows/ci.yml    # Lint, tests, build, audit
+├── CONTRIBUTING.md             # Dev setup and workflow
+├── Makefile                    # make check / test / lint shortcuts
+├── SECURITY.md                 # Security model and reporting
 ├── render.yaml                 # 1-Click Render blueprint
 ├── vercel.json                 # Vercel configuration
 └── README.md
