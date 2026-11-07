@@ -5,7 +5,7 @@ a fresh clone to a passing test run.
 
 ## Prerequisites
 
-- Python 3.12 and Node.js 22
+- Python 3.12 and Node.js 24
 - Docker (for the local stack and for the database the API tests need)
 - Optional: `make`. On Windows, install it with `choco install make` or use Git Bash; every `make` target below is just
   a short alias for the plain command shown next to it.
