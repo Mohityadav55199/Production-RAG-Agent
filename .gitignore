@@ -47,6 +47,9 @@ backend/alembic/versions/__pycache__/
 qdrant_data/
 backend/qdrant_data/
 
-# Study material & docs
-/docs/
-docs/
+# Study material & docs (private notes stay out of git; only the design decisions are published)
+/docs/*
+!/docs/decisions.md
+
+# Generated OpenAPI export (npm run gen:api)
+/.openapi.json

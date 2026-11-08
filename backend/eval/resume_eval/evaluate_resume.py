@@ -14,7 +14,7 @@ Usage:
     python backend/eval/resume_eval/evaluate_resume.py
     python backend/eval/resume_eval/evaluate_resume.py --live
     python backend/eval/resume_eval/evaluate_resume.py --live --provider groq --model openai/gpt-oss-120b
-    python backend/eval/resume_eval/evaluate_resume.py --live --provider gemini --model gemini-2.5-flash --limit 5
+    python backend/eval/resume_eval/evaluate_resume.py --live --provider gemini --model gemini-3.5-flash --limit 5
 """
 
 import argparse
@@ -208,7 +208,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate resume grounding and scoring suite.")
     parser.add_argument("--live", action="store_true", help="Also tailor every candidate and write outreach with the live LLM.")
     parser.add_argument("--provider", choices=["groq", "gemini"], help="With --live: use only this provider (no fallbacks).")
-    parser.add_argument("--model", help="With --live: the model to use, e.g. openai/gpt-oss-120b or gemini-2.5-flash.")
+    parser.add_argument("--model", help="With --live: the model to use, e.g. openai/gpt-oss-120b or gemini-3.5-flash.")
     parser.add_argument("--limit", type=int, help="With --live: tailor only the first N jobs (saves quota).")
     args = parser.parse_args()
 

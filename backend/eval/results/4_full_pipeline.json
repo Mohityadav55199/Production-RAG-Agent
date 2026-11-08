@@ -1,0 +1,181 @@
+{
+  "config": {
+    "mode": "Live Gemini + Qdrant + question condensing + reranking + hybrid",
+    "top_k": 5,
+    "min_score": 0.63,
+    "max_gap": 0.05
+  },
+  "metrics": {
+    "total_queries": 60,
+    "hit_rate_1": 0.9,
+    "hit_rate_3": 0.9166666666666666,
+    "hit_rate_5": 0.9166666666666666,
+    "hit_rate_10": 0.9166666666666666,
+    "mrr": 0.9055555555555556,
+    "section_hit_1": 0.8833333333333333,
+    "section_hit_5": 0.9,
+    "section_mrr": 0.888888888888889,
+    "avg_latency_ms": 1845.668010004253
+  },
+  "category_breakdown": {
+    "factual": {
+      "count": 15,
+      "hit@1": 0.8666666666666667,
+      "hit@3": 0.8666666666666667,
+      "hit@5": 0.8666666666666667,
+      "mrr": 0.8666666666666667,
+      "sec@1": 0.8666666666666667,
+      "sec@5": 0.8666666666666667
+    },
+    "semantic_paraphrase": {
+      "count": 11,
+      "hit@1": 0.8181818181818182,
+      "hit@3": 0.9090909090909091,
+      "hit@5": 0.9090909090909091,
+      "mrr": 0.8484848484848485,
+      "sec@1": 0.8181818181818182,
+      "sec@5": 0.9090909090909091
+    },
+    "conceptual": {
+      "count": 11,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "sec@1": 0.9090909090909091,
+      "sec@5": 0.9090909090909091
+    },
+    "technical_numeric": {
+      "count": 15,
+      "hit@1": 0.9333333333333333,
+      "hit@3": 0.9333333333333333,
+      "hit@5": 0.9333333333333333,
+      "mrr": 0.9333333333333333,
+      "sec@1": 0.9333333333333333,
+      "sec@5": 0.9333333333333333
+    },
+    "follow_up": {
+      "count": 8,
+      "hit@1": 0.875,
+      "hit@3": 0.875,
+      "hit@5": 0.875,
+      "mrr": 0.875,
+      "sec@1": 0.875,
+      "sec@5": 0.875
+    }
+  },
+  "difficulty_breakdown": {
+    "easy": {
+      "count": 16,
+      "hit@1": 0.9375,
+      "hit@3": 0.9375,
+      "hit@5": 0.9375,
+      "mrr": 0.9375,
+      "sec@1": 0.9375,
+      "sec@5": 0.9375
+    },
+    "medium": {
+      "count": 29,
+      "hit@1": 0.9310344827586207,
+      "hit@3": 0.9310344827586207,
+      "hit@5": 0.9310344827586207,
+      "mrr": 0.9310344827586207,
+      "sec@1": 0.896551724137931,
+      "sec@5": 0.896551724137931
+    },
+    "hard": {
+      "count": 15,
+      "hit@1": 0.8,
+      "hit@3": 0.8666666666666667,
+      "hit@5": 0.8666666666666667,
+      "mrr": 0.8222222222222223,
+      "sec@1": 0.8,
+      "sec@5": 0.8666666666666667
+    }
+  },
+  "missed_queries": [
+    {
+      "id": 4,
+      "question": "How does the backend stream answers and citations to the frontend?",
+      "expected": [
+        "architecture_overview.md"
+      ],
+      "retrieved": [
+        "architecture_overview.md"
+      ],
+      "top_score": 0.7058571301590479,
+      "category": "conceptual",
+      "expected_section": "Query Pipeline and Streaming Lifecycle",
+      "file_hit": true
+    },
+    {
+      "id": 5,
+      "question": "What are the default values for the absolute score floor and relative gap filters?",
+      "expected": [
+        "architecture_overview.md"
+      ],
+      "retrieved": [
+        "hybrid_retrieval_and_reranking.md",
+        "hybrid_retrieval_and_reranking.md"
+      ],
+      "top_score": 0.23811498501279132,
+      "category": "technical_numeric",
+      "expected_section": "Query Pipeline and Streaming Lifecycle",
+      "file_hit": false
+    },
+    {
+      "id": 28,
+      "question": "What is the duration of paid parental leave for caregivers?",
+      "expected": [
+        "company_employee_handbook.md"
+      ],
+      "retrieved": [],
+      "top_score": 0.0,
+      "category": "factual",
+      "expected_section": "Paid Time Off (PTO) and Leaves",
+      "file_hit": false
+    },
+    {
+      "id": 35,
+      "question": "How much memory does the free hosting plan give the API server?",
+      "expected": [
+        "deployment_and_devops.md"
+      ],
+      "retrieved": [
+        "rate_limits_and_quotas.md",
+        "embedding_and_chunking_spec.md"
+      ],
+      "top_score": 0.4524210935532809,
+      "category": "semantic_paraphrase",
+      "expected_section": "Resource Constraints and Scaling",
+      "file_hit": false
+    },
+    {
+      "id": 41,
+      "question": "What happens when it is rate limited?",
+      "expected": [
+        "architecture_overview.md"
+      ],
+      "retrieved": [
+        "rate_limits_and_quotas.md",
+        "security_and_auth_policy.md"
+      ],
+      "top_score": 0.5408130493591814,
+      "category": "follow_up",
+      "expected_section": "LLM Fallback Architecture",
+      "file_hit": false
+    },
+    {
+      "id": 52,
+      "question": "When does the circuit breaker open and how long does it remain open?",
+      "expected": [
+        "rate_limits_and_quotas.md"
+      ],
+      "retrieved": [],
+      "top_score": 0.0,
+      "category": "factual",
+      "expected_section": "LLM Provider Quota Management & Backoff",
+      "file_hit": false
+    }
+  ]
+}

@@ -1,0 +1,232 @@
+{
+  "summary": {
+    "answerer": "groq:",
+    "judge": "gemini",
+    "graded": 20,
+    "faithfulness": 0.975,
+    "correctness": 0.9,
+    "cites_expected_source": 0.75
+  },
+  "rows": [
+    {
+      "id": 1,
+      "category": "factual",
+      "question": "What model is used as the primary LLM and what is its default temperature?",
+      "answer": "The primary LLM is **llama\u20113.3\u201170b\u2011versatile** (run on Groq) and its default temperature is **0.1** (architecture_overview.md).",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately identified the primary LLM and its default temperature based strictly on the provided context.",
+      "cites_expected_source": true,
+      "answer_ms": 787
+    },
+    {
+      "id": 4,
+      "category": "conceptual",
+      "question": "How does the backend stream answers and citations to the frontend?",
+      "answer": "The backend sends the LLM\u2019s output to the frontend using Server\u2011Sent Events (SSE). As the response is generated, it streams individual text pieces as `event: chunk` messages. After the answer is complete, it emits an `event: sources` message containing the citation metadata, and finally a `[DONE]` marker to signal the end of the stream (architecture_overview.md).",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant's response accurately describes the SSE streaming mechanism using `event: chunk`, `event: sources`, and `[DONE]` directly supported by the context.",
+      "cites_expected_source": true,
+      "answer_ms": 615
+    },
+    {
+      "id": 7,
+      "category": "factual",
+      "question": "What header is used to safely identify client IP addresses behind Cloudflare and Vercel?",
+      "answer": "The system reads the client IP from the `cf-connecting-ip` header when traffic passes through Cloudflare and Vercel (security_and_auth_policy.md).",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately identifies the 'cf-connecting-ip' header as stated in the context and reference answer.",
+      "cites_expected_source": true,
+      "answer_ms": 639
+    },
+    {
+      "id": 10,
+      "category": "conceptual",
+      "question": "How does the vector database prevent multi-tenant data leaks between organizations?",
+      "answer": "The vector database (Qdrant) stores each chunk with a `document_id` and an optional `user_id` in the payload. When a multi\u2011tenant query is executed, Qdrant first applies match\u2011filters on these fields before performing the ANN search, ensuring that only vectors belonging to the requesting organization or shared workspace are considered. This filtering guarantees that users cannot retrieve embeddings from other organizations. (security_and_auth_policy.md)",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately captures all details from the retrieved context and correctly answers the question matching the reference.",
+      "cites_expected_source": true,
+      "answer_ms": 406
+    },
+    {
+      "id": 13,
+      "category": "conceptual",
+      "question": "Why are wildcard CORS origins forbidden in production?",
+      "answer": "Wildcard CORS origins are forbidden in production because the backend enables `allow_credentials=True` for cookie\u2011based and Authorization\u2011header sessions; using `[\"*\"]` with credentials would allow any site to obtain those credentials, creating a security risk. (deployment_and_devops.md)",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately explains why wildcard origins are forbidden using only the provided context.",
+      "cites_expected_source": true,
+      "answer_ms": 823
+    },
+    {
+      "id": 16,
+      "category": "factual",
+      "question": "What embedding model is used and what is the output vector dimension?",
+      "answer": "The system uses the Google Gemini embedding model **`models/gemini-embedding-001`**, which produces output vectors of **3072 floating\u2011point dimensions** (embedding\u2011and\u2011chunking_spec.md).",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately identifies both the embedding model and the output vector dimension as specified in the context and reference answer.",
+      "cites_expected_source": false,
+      "answer_ms": 734
+    },
+    {
+      "id": 19,
+      "category": "technical_numeric",
+      "question": "How many chunks are processed per embedding batch?",
+      "answer": "Five chunks are processed per embedding batch (`EMBEDDING_BATCH_SIZE = 5`) (embedding_and_chunking_spec.md).",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately states that five chunks are processed per embedding batch based on the retrieved context, matching the reference answer.",
+      "cites_expected_source": true,
+      "answer_ms": 271
+    },
+    {
+      "id": 22,
+      "category": "conceptual",
+      "question": "How are scanned pages in PDFs handled when direct text extraction fails?",
+      "answer": "Scanned PDF pages that cannot be read as text are sent to a Tesseract OCR fallback after the initial PyMuPDF (fitz) extraction attempt (data_ingestion_pipeline.md). (data_ingestion_pipeline.md)",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately states that scanned pages trigger a Tesseract OCR fallback based on the provided text.",
+      "cites_expected_source": true,
+      "answer_ms": 351
+    },
+    {
+      "id": 25,
+      "category": "factual",
+      "question": "How are spreadsheet files like XLSX and CSV represented after parsing?",
+      "answer": "After parsing, spreadsheet files (`.xlsx` and `.csv`) are transformed into pipe\u2011delimited markdown tables (e.g., `| col1 | col2 | \u2026 |`). (data_ingestion_pipeline.md)",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant's answer accurately reflects that spreadsheet files are converted into pipe-delimited markdown tables according to the context.",
+      "cites_expected_source": true,
+      "answer_ms": 374
+    },
+    {
+      "id": 28,
+      "category": "factual",
+      "question": "What is the duration of paid parental leave for caregivers?",
+      "answer": "I\u2019m sorry, but I don\u2019t have that information in the retrieved knowledge base.",
+      "faithful": "yes",
+      "correct": "no",
+      "reason": "The assistant correctly stated that the information was missing based on the retrieved context, but failed to provide the correct duration of paid parental leave found in the reference answer.",
+      "cites_expected_source": false,
+      "answer_ms": 559
+    },
+    {
+      "id": 31,
+      "category": "semantic_paraphrase",
+      "question": "How long can someone stay signed in before they have to log in again?",
+      "answer": "A user remains signed in for up to **168\u202fhours (7\u202fdays)** before the JWT access token expires and they must log in again (security_and_auth_policy.md).",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately provides the exact timeframe mentioned in the context and agrees with the reference answer.",
+      "cites_expected_source": true,
+      "answer_ms": 541
+    },
+    {
+      "id": 34,
+      "category": "semantic_paraphrase",
+      "question": "Why does the system avoid paying twice for vectorising text it has already seen?",
+      "answer": "The ingestion pipeline generates a deterministic UUIDv5 for each chunk (based on filename, page number, heading, etc.) and checks Qdrant for an existing point with that ID before calling the Gemini embedding API. If the point already exists, the chunk is skipped, so the same text is not re\u2011embedded and the associated Gemini API cost is avoided (data_ingestion_pipeline.md).",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately explains the mechanism for avoiding duplicate vectorisation using deterministic point IDs and checking Qdrant before calling the embedding API, fully supported by the text.",
+      "cites_expected_source": true,
+      "answer_ms": 732
+    },
+    {
+      "id": 37,
+      "category": "semantic_paraphrase",
+      "question": "How does the app guarantee my files are invisible to other customers when searching?",
+      "answer": "The app stores each file\u2019s embeddings in Qdrant with a\u202f`document_id` and, when applicable, a\u202f`user_id` attached to the vector payload.\u202fWhen a search is performed, the query includes a match\u2011filter on these fields so that only vectors belonging to the requesting customer\u2019s workspace (or shared workspace) are considered before the ANN search runs. This filtering ensures that embeddings from other customers\u2019 documents are never returned, keeping each customer\u2019s files invisible to others (security_and_auth_policy.md).",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately explains how Qdrant match filters on document_id and user_id are applied before ANN computation, directly matching the context and reference answer.",
+      "cites_expected_source": true,
+      "answer_ms": 539
+    },
+    {
+      "id": 40,
+      "category": "semantic_paraphrase",
+      "question": "What does the company give a new hire to buy a computer?",
+      "answer": "The company provides each new engineer with a one\u2011time $2,500 hardware budget to purchase a laptop, ergonomic chair, monitor, or other equipment (company_employee_handbook.md).",
+      "faithful": "partial",
+      "correct": "yes",
+      "reason": "The assistant included unverified information not found in the context ('or other equipment').",
+      "cites_expected_source": true,
+      "answer_ms": 720
+    },
+    {
+      "id": 43,
+      "category": "follow_up",
+      "question": "What task type is used when searching with it?",
+      "answer": "`RETRIEVAL_QUERY`.",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant correctly identified RETRIEVAL_QUERY as the task type used for searching based on the provided context.",
+      "cites_expected_source": false,
+      "answer_ms": 460
+    },
+    {
+      "id": 46,
+      "category": "follow_up",
+      "question": "Why is that done?",
+      "answer": "Because deterministic UUIDv5 IDs let the pipeline be idempotent: the same document chunk always maps to the same point ID, so repeated uploads or network retries can detect existing vectors and skip re\u2011embedding, avoiding duplicate data and unnecessary Gemini API costs (data_ingestion_pipeline.md).",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant answer is fully supported by the context and accurately answers why it is done based on the reference answer.",
+      "cites_expected_source": true,
+      "answer_ms": 760
+    },
+    {
+      "id": 49,
+      "category": "technical_numeric",
+      "question": "What is the unauthenticated client sliding window and burst allowance limit?",
+      "answer": "The unauthenticated client sliding window is **60 requests per minute**, with a **burst allowance of up to 10 requests within a 2\u2011second window** (rate_limits_and_quotas.md).",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately and completely provides both the sliding window and burst allowance limits for unauthenticated clients as stated in the retrieved context.",
+      "cites_expected_source": true,
+      "answer_ms": 436
+    },
+    {
+      "id": 52,
+      "category": "factual",
+      "question": "When does the circuit breaker open and how long does it remain open?",
+      "answer": "The retrieved knowledge base does not contain any information about a circuit breaker\u2019s opening conditions or its open\u2011duration, so I cannot provide those details.",
+      "faithful": "yes",
+      "correct": "no",
+      "reason": "The assistant correctly stated that the retrieved context contained no information, but because the context was empty, it failed to provide the correct answer from the reference text.",
+      "cites_expected_source": false,
+      "answer_ms": 621
+    },
+    {
+      "id": 55,
+      "category": "technical_numeric",
+      "question": "How many candidate chunks are evaluated by the flash reranker before returning the top 5?",
+      "answer": "The flash cross\u2011encoder reranker scores **15 candidate chunks** before selecting the final\u202f5. (hybrid_retrieval_and_reranking.md)",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant correctly states that 15 candidate chunks are evaluated, which is fully supported by the retrieved context.",
+      "cites_expected_source": true,
+      "answer_ms": 668
+    },
+    {
+      "id": 58,
+      "category": "conceptual",
+      "question": "Why do dense embeddings struggle with exact code symbols and how is it solved?",
+      "answer": "Dense embeddings focus on semantic similarity, so they capture concepts, synonyms and paraphrases but often miss exact technical tokens such as code symbols, error codes, or acronyms (e.g., `k8s`, `Qdrant`, `pLDDT`, `HTTP\u202f429`) because those tokens contribute little to the overall semantic vector (\u30101\u2020L4-L7\u3011).  \n\nThe system solves this by adding a **sparse lexical retriever** (BM25/inverted index) that indexes exact tokens and symbols, then fusing the dense and sparse result lists with **Reciprocal Rank Fusion (RRF)** (weights\u202f0.65 dense,\u202f0.35 sparse) to produce a combined candidate set that retains both semantic relevance and exact\u2011match precision\u30102\u2020L1-L6\u3011.",
+      "faithful": "yes",
+      "correct": "yes",
+      "reason": "The assistant accurately explains why dense embeddings struggle and how sparse lexical search combined with RRF solves it, fully supported by the retrieved context.",
+      "cites_expected_source": false,
+      "answer_ms": 788
+    }
+  ]
+}

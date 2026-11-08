@@ -712,7 +712,7 @@ def main():
     parser.add_argument("--condense", action="store_true",
                         help="With --live: rewrite follow-up questions into standalone queries before searching.")
     parser.add_argument("--rebuild", action="store_true", help="With --live: re-embed the corpus even if already indexed.")
-    parser.add_argument("--rerank", action="store_true", help="Enable second-stage flash cross-encoder reranker.")
+    parser.add_argument("--rerank", action="store_true", help="Enable second-stage lexical reranker (word, heading and phrase overlap).")
     parser.add_argument("--hybrid", action="store_true", help="With --live: add the exact-term (keyword) search leg.")
     parser.add_argument("--json-out", type=Path, default=None, help="Save evaluation summary to JSON file.")
 
