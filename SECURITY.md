@@ -30,6 +30,14 @@ Only the `main` branch is maintained.
 - Uploads are deduplicated by SHA-256 hash.
 
 ### Prompt injection
+- Retrieved text is marked as untrusted data in the system prompt, and the rule not to reveal the prompt is stated
+  twice. This is **measured, not assumed**: `backend/eval/guardrails.py` runs 8 adversarial cases against the real model.
+  The original prompt passed 4 of 8 (the model printed its whole system prompt and repeated a tracking image); the
+  current prompt passes 6 or 7 of 8. Two cases, a document that says to add a link and one that says to change the
+  answering style, still succeed some of the time. **Prompting alone cannot make a model ignore text it has read.**
+- So the damage a successful injection can do is limited by design: the assistant has no tools and takes no actions,
+  every query only sees the signed-in user's own documents, and the browser never loads a remote image from an answer
+  until the user clicks (covered by tests in `components/ui/safe-markdown.test.tsx`).
 - Images in AI answers are never fetched automatically. A hostile document could otherwise tell the model to place the
   conversation in an image address and have the browser send it out. The answer shows where the image comes from and the
   user clicks **Load image** to opt in.
@@ -50,6 +58,8 @@ Only the `main` branch is maintained.
 
 ## Known limitations
 
+- Prompt injection can still change what an answer says (for example add a link). Links in answers open only when clicked,
+  in a new tab with no referrer, and nothing happens automatically.
 - Email addresses are verified only when email sending is configured; until then the address is not proof of identity.
 - The Render free tier is a single instance with an in-memory rate limiter, so limits reset when the server restarts.
 - This is a learning and portfolio project, not an audited product. Do not upload documents you cannot afford to lose or

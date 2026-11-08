@@ -15,7 +15,7 @@ services:
         value: production
       - key: LOG_LEVEL
         value: INFO
-      # Only the API keys are needed. Models and the fallback chain (gpt-oss-120b -> gpt-oss-20b -> gemini-2.5-flash)
+      # Only the API keys are needed. Models and the fallback chain (gpt-oss-120b -> gpt-oss-20b -> gemini-3.5-flash)
       # are built into the code, which also replaces retired model names left in the environment.
       - key: GROQ_API_KEY
         sync: false

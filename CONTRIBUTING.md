@@ -36,8 +36,9 @@ cd .. && npm ci
 | Run the API | `make dev-backend` | `cd backend && uvicorn app.main:app --reload --port 8000` |
 | Run the frontend | `make dev-frontend` | `npm run dev` |
 | Lint | `make lint` | `cd backend && ruff check .` and `npm run lint` |
-| Type check | `make typecheck` | `npm run typecheck` |
+| Type check | `make typecheck` and `make types` | `npm run typecheck` and `cd backend && mypy app` |
 | Backend tests | `make test` | `cd backend && pytest -q` |
+| Frontend tests | `make test-web` | `npm test` |
 | Backend tests incl. API tests | `make test-db` | see below |
 | Everything CI checks | `make check` | all of the above |
 
@@ -55,11 +56,39 @@ TEST_DATABASE_URL=postgresql+asyncpg://postgres:pw@localhost:5433/ragtest pytest
 Without `TEST_DATABASE_URL` those tests are skipped and the rest still run. The resume PDF tests also skip when
 `pdflatex` is not installed; CI installs it, so they do run there.
 
+### Quality checks that call real models
+
+These cost a little, so CI does not run them. Run them after changing retrieval, prompts or models, and compare with the
+tables in `backend/eval/README.md`:
+
+| Task | `make` | What it tells you |
+|---|---|---|
+| Retrieval benchmark | `make eval` | Hit@k and MRR for each pipeline stage (needs `GOOGLE_API_KEY`, `GROQ_API_KEY`) |
+| Answer quality | `make judge` | Faithfulness and correctness, graded by a different model |
+| Guardrails | `make guardrails` | Whether prompt-injection and invented-fact cases still pass |
+
+If you change the system prompt, run `make guardrails` and `make judge` before and after; model output varies, so look
+for a clear change rather than a point or two.
+
+### Generated API types
+
+`lib/api-client/schema.d.ts` is generated from the backend. After changing an endpoint or a schema, activate the backend
+virtualenv and run `npm run gen:api`, then commit the result. CI fails when the file is out of date.
+
+### Load testing and a demo account
+
+`make loadtest` runs Locust against a **local** backend (start it with `QUERY_DAILY_LIMIT=0` so test users are not
+rate limited). It refuses remote hosts so the Render free tier is never hammered by accident.
+
+To give visitors something to try, create a demo user with the sample documents:
+`DEMO_PASSWORD=... make seed-demo BASE_URL=https://<your-backend>`. Choose a password you are happy to publish, use an
+address that is not an account of yours, and put the sign-in details in the README yourself.
+
 ## Workflow
 
 1. Create a branch from `main` (`feat/...`, `fix/...`).
 2. Make the change and add or update tests next to the code it covers (`backend/tests/`).
-3. Run `make check`, then `npm run build` if you touched the frontend.
+3. Run `make check`, then `npm run build` if you touched the frontend. If you changed retrieval, a prompt or a model, run the model-based checks above as well.
 4. Open a pull request. CI must be green: ruff, pytest against Postgres, frontend typecheck/lint/build, Docker build.
 
 Commit messages follow the Conventional Commits style used in the history: `feat(scope): ...`, `fix(scope): ...`,

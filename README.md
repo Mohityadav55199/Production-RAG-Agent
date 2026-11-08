@@ -20,7 +20,7 @@ Build AI-powered knowledge assistants capable of ingesting, indexing, retrieving
   <img src="https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker" alt="Docker" />
   <img src="https://img.shields.io/badge/PostgreSQL-Neon%20%2F%20Supabase-336791?logo=postgresql" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/Qdrant-Vector%20Database-DC2626?logo=qdrant" alt="Qdrant" />
-  <img src="https://img.shields.io/badge/Google-Gemini%202.5-orange?logo=google" alt="Google Gemini" />
+  <img src="https://img.shields.io/badge/Google-Gemini%203.5-orange?logo=google" alt="Google Gemini" />
 </p>
 
 </div>
@@ -99,13 +99,14 @@ The project incorporates production engineering best practices including:
 
 ### LangGraph Context Construction & Gemini Reasoning
 - Multi-step reasoning pipeline built with LangGraph.
-- Answers with Groq `openai/gpt-oss-120b` by default, falling back to `gpt-oss-20b` and then Gemini 2.5 Flash on rate limits; image questions go to Gemini.
+- Answers with Groq `openai/gpt-oss-120b` by default, falling back to `gpt-oss-20b` and then Gemini 3.5 Flash on rate limits; image questions go to Gemini.
 - High-dimensional vector representations with `models/gemini-embedding-001` (3072 dimensions).
 
 ### Real-Time Streaming AI Chat
 - Server-Sent Events (SSE) token streaming for responsive UX.
 - Rich Markdown rendering, syntax-highlighted code blocks, and one-click copy.
 - Inline source citations and relevance scores.
+- Live progress while it works: "Rewriting your follow-up", "Searching your documents", "Writing the answer".
 
 ### Images
 All four need `GOOGLE_API_KEY` (Gemini does the seeing); without it, text features keep working and image uploads fall back to OCR.
@@ -150,7 +151,8 @@ compatibility from the compiled PDF.
 - **Backend**: FastAPI, LangGraph, LangChain, Pydantic v2, SQLAlchemy 2.0 (Async)
 - **Vector Database**: Qdrant (Qdrant Cloud / Docker)
 - **Relational Database**: PostgreSQL (Neon Serverless / Supabase / Local)
-- **AI Models**: Groq gpt-oss-120b / gpt-oss-20b (answers), Google Gemini 2.5 Flash (vision, fallback) & Gemini Embedding 001
+- **AI Models**: Groq gpt-oss-120b / gpt-oss-20b (answers), Google Gemini 3.5 Flash (vision, fallback) & Gemini Embedding 001
+- **Quality**: pytest, ruff and mypy (backend); Vitest, ESLint and TypeScript (frontend); GitHub Actions CI
 - **Deployment**: Render (Docker Backend), Vercel (Next.js Frontend)
 
 ---
@@ -171,7 +173,7 @@ Create `backend/.env` (copy from `backend/.env.example`):
 ```ini
 # Google Gemini
 GOOGLE_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.5-flash
 GEMINI_EMBEDDING_MODEL=models/gemini-embedding-001
 EMBEDDING_DIMENSION=3072
 
@@ -321,6 +323,33 @@ you click **Load image**.
 
 ---
 
+## Evaluation
+
+Retrieval and answer quality are measured, not assumed. Everything below is reproducible from `backend/eval` (see its
+[README](backend/eval/README.md) for the method, the caveats and the commands).
+
+**Retrieval** (60 questions over 8 documents, live Gemini embeddings and Qdrant):
+
+| Pipeline stage | Hit@1 | Hit@5 | MRR | Follow-up MRR | Avg search time |
+|---|---|---|---|---|---|
+| Vector search | 86.7% | 93.3% | 0.893 | 0.604 | 0.98 s |
+| + exact-term (hybrid) search | 86.7% | 93.3% | 0.893 | 0.604 | 0.92 s |
+| + lexical reranking | 86.7% | 90.0% | 0.881 | 0.688 | 1.22 s |
+| + follow-up question rewriting | 90.0% | 91.7% | 0.906 | 0.875 | 1.85 s |
+
+The honest reading: rewriting follow-up questions is the clear win; hybrid search changed nothing on this prose-only
+corpus, and the lexical reranker slightly hurt paraphrased questions. The reasoning is in
+[docs/decisions.md](docs/decisions.md).
+
+**Answer quality** (20 questions, Groq answers graded by Gemini): faithfulness 97.5%, correctness 90%. The two incorrect
+answers were retrieval misses where the assistant correctly said the documents did not contain the answer.
+
+**Guardrails** (8 adversarial cases: injected instructions, tracking images, prompt-leak requests, invented facts): the
+original prompt passed 4 of 8; the hardened prompt passes 6 or 7 of 8. Prompting alone does not stop every injection, so the
+browser also refuses to load remote images from an answer until the user clicks, and the assistant has no tools.
+
+---
+
 ## Security
 
 Short version of what the app does to protect users and the server. The full list, and how to report a problem, is in
@@ -330,8 +359,10 @@ Short version of what the app does to protect users and the server. The full lis
   (12 per 15 minutes) with a signed device token so an attacker cannot lock out your usual browser.
 - **Uploads:** size limit, file-signature check (not just the extension), decompression-bomb checks for images, SVG
   rejected, images re-encoded on the server so metadata and hidden payloads are dropped.
-- **Prompt injection:** images in AI answers are never fetched automatically, so a hostile document cannot make the model
-  leak a conversation through an image URL. The user clicks **Load image** to opt in.
+- **Prompt injection:** retrieved text is treated as data, and the prompt is tested against 8 adversarial cases (see
+  Evaluation). It is not a complete defence, so images in AI answers are also never fetched automatically: a hostile
+  document cannot make the model leak a conversation through an image URL, and the user clicks **Load image** to opt in.
+  This is covered by browser tests.
 - **Abuse limits:** per-user quotas and rate limits, with the real client address resolved safely behind Vercel,
   Cloudflare and Render.
 - **Data isolation:** documents, chats and resumes are scoped to the signed-in user.
@@ -346,8 +377,9 @@ CI (`.github/workflows/ci.yml`) runs on every push and pull request:
 | Job | What it checks |
 |---|---|
 | Backend lint | `ruff check` for bugs (unused code, bad exception handling) |
-| Backend tests | `pytest` against a real PostgreSQL 16 service, with LaTeX installed so the resume PDF tests run |
-| Frontend | type check, ESLint and a production build |
+| Backend tests | `mypy` type check, then `pytest` with coverage against a real PostgreSQL 16 service, with LaTeX installed so the resume PDF tests run |
+| Frontend | type check, ESLint, Vitest tests with coverage, and a production build |
+| API types | regenerates `lib/api-client/schema.d.ts` from the backend and fails if the committed file differs |
 | Dependency audit | `pip-audit` and `npm audit` (report only) |
 | Docker | builds the backend image once the checks above pass |
 
@@ -367,8 +399,13 @@ pip install -c requirements.lock -r requirements-dev.txt
 TEST_DATABASE_URL=postgresql+asyncpg://postgres:pw@localhost:5433/ragtest pytest
 
 # Frontend (from the repo root)
-npm run typecheck && npm run lint && npm run build
+npm run typecheck && npm run lint && npm test && npm run build
 ```
+
+Beyond the unit tests there are three things you run by hand, because they call real models and cost a little:
+`bash backend/eval/run_comparison.sh` (retrieval benchmark), `python backend/eval/judge.py` (answer quality) and
+`python backend/eval/guardrails.py` (prompt injection). A Locust load test lives in `backend/loadtest/` and refuses to
+run against a remote host, so it cannot burn the Render free tier by accident.
 
 Without `TEST_DATABASE_URL` the API tests are skipped and the rest run. The PDF-compile tests need `pdflatex`
 (they run inside the Docker image).
@@ -395,12 +432,16 @@ Production-RAG-Agent/
 │   │   ├── schemas/            # Pydantic data schemas
 │   │   ├── services/           # Ingestion, embedding, chunking, & LangGraph RAG
 │   │   └── config.py           # Environment settings & URL sanitization
+│   ├── eval/                   # Retrieval benchmark, answer-quality judge, guardrail cases
+│   ├── loadtest/               # Locust load test (local use only)
+│   ├── tests/                  # pytest suite
 │   ├── Dockerfile              # Multi-stage production container
 │   ├── requirements.txt        # Python dependencies
 │   └── docker-compose.yml      # Local dev stack
 ├── components/                 # Reusable React UI components
 ├── lib/                        # Client API hooks & utils
-├── .github/workflows/ci.yml    # Lint, tests, build, audit
+├── .github/workflows/ci.yml    # Lint, types, tests, build, audit
+├── docs/decisions.md           # Why it is built this way, and what was measured
 ├── CONTRIBUTING.md             # Dev setup and workflow
 ├── Makefile                    # make check / test / lint shortcuts
 ├── SECURITY.md                 # Security model and reporting
