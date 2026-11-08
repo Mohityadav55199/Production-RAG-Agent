@@ -79,12 +79,12 @@ async def _create_document_record(
         # Fall back to fetching the newly inserted document.
         async with get_db_session() as session:
             from sqlalchemy import select
-            doc = await session.scalar(
+            existing = await session.scalar(
                 select(Document).where(Document.file_hash == file_hash, Document.user_id == user_id).limit(1)
             )
-            if not doc:
+            if existing is None:
                 raise RuntimeError("IntegrityError caught but document not found on fallback.") from integrity_exc
-            return doc
+            return existing
 
 
 async def _update_document(
@@ -349,6 +349,7 @@ async def _process_single_file(
     doc, early = await _prepare_file(filename, content, user_id)
     if early is not None:
         return early
+    assert doc is not None   # _prepare_file returns either a result or a document
     return await _run_pipeline(doc, filename, content, settings)
 
 
@@ -371,6 +372,7 @@ async def queue_uploads(
         if early is not None:
             results.append(early)
             continue
+        assert doc is not None
         await _update_document(doc.id, status=DocumentStatus.PENDING, current_stage="queued", error_message=None)
         await ingestion_queue.enqueue(doc.id, filename, content)
         results.append(DocumentResult(
@@ -442,6 +444,7 @@ async def recover_stuck_documents() -> None:
                 error_message="Server restarted during processing. Re-upload the identical file to resume."
             )
         )
-        if result.rowcount > 0:
-            logger.info("Recovered %d stuck documents from previous crash. Marked as FAILED to allow resume.", result.rowcount)
+        recovered = getattr(result, "rowcount", 0)
+        if recovered > 0:
+            logger.info("Recovered %d stuck documents from previous crash. Marked as FAILED to allow resume.", recovered)
 

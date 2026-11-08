@@ -89,9 +89,10 @@ async def embed_batch_with_retry(
                 metrics.record_429()
                 retry_after = _extract_retry_after(exc)
             elif isinstance(exc, google_exc.GoogleAPIError):
-                if exc.code in {429, 500, 502, 503, 504}:
+                code = getattr(exc, "code", None)   # only GoogleAPICallError carries one
+                if code in {429, 500, 502, 503, 504}:
                     is_retryable = True
-                if exc.code == 429:
+                if code == 429:
                     metrics.record_429()
                 retry_after = _extract_retry_after(exc)
 

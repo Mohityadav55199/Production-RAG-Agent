@@ -1,5 +1,5 @@
 """
-Unit tests for the Flash Cross-Encoder Reranker.
+Unit tests for the lexical reranker (flash_rerank_chunks).
 Validates token coverage, heading/section alignment, contiguous phrase boosts,
 and length damping.
 """

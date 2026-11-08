@@ -116,12 +116,13 @@ async def add_resume(
     if file is None and not (text and text.strip()):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Upload a resume file or paste its text.")
 
+    filename: str | None
     try:
         if file is not None:
             content, filename = await _read_upload(file)
             raw_text, file_type = library.extract_text(content, filename)
         else:
-            raw_text = text.strip()
+            raw_text = (text or "").strip()
             is_latex = "\\documentclass" in raw_text or "\\begin{" in raw_text or "\\section" in raw_text
             file_type = "tex" if is_latex else "text"
             filename = "resume.tex" if is_latex else None
@@ -694,6 +695,8 @@ async def rescore(generation_id: uuid.UUID, body: RescoreRequest, user: CurrentU
     compile_failed = scored["compile_failed"]
     async with get_db_session() as session:
         row = await session.get(ResumeGeneration, g.id)
+        if row is None:   # deleted while it was being re-scored
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
         row.ats_score = score
         row.released = score >= row.threshold and not compile_failed
         row.pdf_compiled = scored["pdf"] is not None
@@ -847,6 +850,8 @@ async def _outreach_inputs(g: ResumeGeneration) -> tuple[Profile, str, JDAnalysi
 async def _save_outreach(generation_id: uuid.UUID, kind: str, item: dict, platform: str | None = None) -> None:
     async with get_db_session() as session:
         row = await session.get(ResumeGeneration, generation_id)
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
         report = dict(row.report or {})
         outreach = dict(report.get("outreach") or {})
         if kind == "cover_letter":

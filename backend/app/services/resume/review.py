@@ -53,7 +53,7 @@ def find_item(items: list, name: str, attr: str):
 
 
 def _bullet_sources(bullets: list[str], originals: list[str]) -> list[dict]:
-    rows = []
+    rows: list[dict] = []
     for text in bullets:
         exact = next((o for o in originals if _norm(o) == _norm(text)), None)
         if exact is not None:

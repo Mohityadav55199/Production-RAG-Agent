@@ -116,7 +116,7 @@ class RenderOptions(BaseModel):
 
     template: Literal["classic", "compact", "skills_first", "student"] = "classic"
     font_pt: Literal[10, 11, 12] = 10
-    margin_in: Literal[0.5, 0.6, 0.75, 1.0] = 0.6
+    margin_in: Literal[0.5, 0.6, 0.75, 1.0] = 0.6  # type: ignore[valid-type]  # float literals are fine at runtime
     font: Literal["serif", "sans"] = "serif"
     section_order: list[SectionName] | None = Field(None, max_length=7)
     layout_id: str | None = Field(None, pattern=r"^[0-9a-fA-F-]{36}$")

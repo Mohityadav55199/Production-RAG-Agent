@@ -39,20 +39,20 @@ _REASONING_MODEL_PREFIXES = ("openai/gpt-oss",)
 BUILT_IN_CHAIN: tuple[tuple[str, str], ...] = (
     ("groq", "openai/gpt-oss-120b"),
     ("groq", "openai/gpt-oss-20b"),
-    ("gemini", "gemini-2.5-flash"),
+    ("gemini", "gemini-3.5-flash"),
 )
 
 # The small, fast models used to rewrite follow-up questions (QUERY_REWRITE_MODEL goes first)
 BUILT_IN_REWRITE_CHAIN: tuple[tuple[str, str], ...] = (
     ("groq", "openai/gpt-oss-20b"),
     ("groq", "openai/gpt-oss-120b"),
-    ("gemini", "gemini-2.5-flash"),
+    ("gemini", "gemini-3.5-flash"),
 )
 
 # Image requests: Gemini only (GEMINI_MODEL goes first)
 BUILT_IN_VISION_CHAIN: tuple[tuple[str, str], ...] = (
-    ("gemini", "gemini-2.5-flash"),
-    ("gemini", "gemini-2.5-flash-lite"),
+    ("gemini", "gemini-3.5-flash"),
+    ("gemini", "gemini-3.5-flash-lite"),
 )
 
 # Shut-down models and their successors. A deployment whose environment still names one keeps working.
@@ -69,8 +69,8 @@ RETIRED_MODELS: dict[str, str] = {
     "mixtral-8x7b-32768": "openai/gpt-oss-120b",
     "gemma2-9b-it": "openai/gpt-oss-20b",
     # Google
-    "gemini-1.5-flash": "gemini-2.5-flash",
-    "gemini-1.5-pro": "gemini-2.5-flash",
+    "gemini-1.5-flash": "gemini-3.5-flash",
+    "gemini-1.5-pro": "gemini-3.5-flash",
 }
 
 _PROVIDER_ALIASES = {"google": "gemini", "google-genai": "gemini", "claude": "anthropic"}

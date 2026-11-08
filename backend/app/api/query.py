@@ -159,6 +159,7 @@ async def _generate_sse(
         "FastAPI will set `Content-Type: text/event-stream` automatically.\n\n"
         "**Event types** (in order):\n"
         "- `thinking` — pipeline started\n"
+        "- `step`     — progress marker (`rewriting`, `searching`, `generating`) with a readable `label`\n"
         "- `sources`  — retrieved document chunks (before any tokens)\n"
         "- `chunk`    — one LLM token or small token batch\n"
         "- `done`     — answer complete; includes `conversation_id` for follow-up\n"

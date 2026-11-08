@@ -8,7 +8,7 @@ from langchain_core.runnables import RunnableLambda
 from app.config import Settings, get_settings
 from app.services import llm_factory
 
-OSS_120B, OSS_20B, GEMINI = ("groq", "openai/gpt-oss-120b"), ("groq", "openai/gpt-oss-20b"), ("gemini", "gemini-2.5-flash")
+OSS_120B, OSS_20B, GEMINI = ("groq", "openai/gpt-oss-120b"), ("groq", "openai/gpt-oss-20b"), ("gemini", "gemini-3.5-flash")
 
 
 @pytest.fixture
@@ -146,7 +146,7 @@ def test_streaming_answer_falls_through_and_reports_the_switch(settings, monkeyp
 
 def test_vision_chain_is_gemini_only_and_replaces_retired_names(settings, monkeypatch):
     monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-1.5-flash")
-    assert chain_of(llm_factory.get_vision_llm()) == [GEMINI, ("gemini", "gemini-2.5-flash-lite")]
+    assert chain_of(llm_factory.get_vision_llm()) == [GEMINI, ("gemini", "gemini-3.5-flash-lite")]
 
 
 CLAUDE = ("anthropic", "claude-opus-5-5")

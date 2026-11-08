@@ -292,23 +292,14 @@ async def retrieve_chunks(
         else top_k
     )
 
-    if hasattr(client, "query_points"):
-        query_response = await client.query_points(
-            collection_name=coll,
-            query=query_vector,
-            limit=candidate_limit,
-            with_payload=True,
-            query_filter=query_filter,
-        )
-        search_results = query_response.points
-    else:
-        search_results = await client.search(
-            collection_name=coll,
-            query_vector=query_vector,
-            limit=candidate_limit,
-            with_payload=True,
-            query_filter=query_filter,
-        )
+    query_response = await client.query_points(
+        collection_name=coll,
+        query=query_vector,
+        limit=candidate_limit,
+        with_payload=True,
+        query_filter=query_filter,
+    )
+    search_results = query_response.points
 
     # Hybrid: add chunks that contain the question's exact identifiers but missed the vector cut-off
     if settings.HYBRID_SEARCH_ENABLED:

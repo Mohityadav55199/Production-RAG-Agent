@@ -30,7 +30,7 @@ router = APIRouter(tags=["Documents"])
         "1. Validated (size limit and supported format)\n"
         "2. Text-extracted with the corresponding parser\n"
         "3. Recursively chunked\n"
-        "4. Embedded via Gemini text-embedding-004\n"
+        "4. Embedded via Gemini (gemini-embedding-001)\n"
         "5. Stored in Qdrant (vectors) and PostgreSQL (metadata)\n\n"
         "A per-file status is returned regardless of individual failures."
     ),

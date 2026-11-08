@@ -95,7 +95,7 @@ def test_score_filtering_impact():
 
 
 def test_flash_reranker_improves_metrics():
-    """Verify that second-stage flash cross-encoder reranker improves Section@5 and Section MRR."""
+    """Verify that second-stage lexical reranker improves Section@5 and Section MRR."""
     dataset = load_dataset(DATASET_PATH)
     index_baseline = LocalBenchmarkIndex(CORPUS_DIR, rerank=False)
     index_reranked = LocalBenchmarkIndex(CORPUS_DIR, rerank=True)

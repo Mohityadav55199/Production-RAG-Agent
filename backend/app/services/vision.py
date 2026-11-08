@@ -14,6 +14,7 @@ not accept images, so image requests never go through the Groq fallback chain.
 """
 
 import base64
+import binascii
 import io
 import re
 from dataclasses import dataclass
@@ -128,7 +129,7 @@ def decode_chat_image(data_b64: str) -> bytes:
     settings = get_settings()
     try:
         raw = base64.b64decode(data_b64, validate=True)
-    except (ValueError, base64.binascii.Error) as exc:
+    except (ValueError, binascii.Error) as exc:
         raise ImageError("An attached image is not valid base64 data.") from exc
     inspect_image(raw, max_bytes=settings.CHAT_IMAGE_MAX_BYTES, allowed_formats=CHAT_FORMATS)
     jpeg, _, _ = normalize_image(raw, DISPLAY_EDGE, 85)

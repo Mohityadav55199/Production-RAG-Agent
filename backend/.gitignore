@@ -34,3 +34,11 @@ logs/
 
 # Retrieval eval: private embedded Qdrant store built by --live
 eval/.qdrant/
+
+loadtest/results/
+
+# Test and coverage output
+.coverage
+htmlcov/
+coverage.xml
+test-results.xml

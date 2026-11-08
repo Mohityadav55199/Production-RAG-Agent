@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     # ── Fallback LLM Configuration ─────────────────────────────────────────────
     ENABLE_LLM_FALLBACK: bool = True
     FALLBACK_LLM_PROVIDER: str = "groq"       # default fallback provider: "groq" | "gemini"
-    # Optional EXTRA fallbacks tried before the built-in chain (gpt-oss-120b -> gpt-oss-20b -> gemini-2.5-flash),
+    # Optional EXTRA fallbacks tried before the built-in chain (gpt-oss-120b -> gpt-oss-20b -> gemini-3.5-flash),
     # which is always used; leave empty. "provider:model" picks another provider.
     FALLBACK_LLM_MODELS: str = ""
     FALLBACK_LLM_MODEL: str = ""
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     GROQ_REASONING_EFFORT: str = "low"     # gpt-oss models only: "low" | "medium" | "high" (more = slower)
 
     GOOGLE_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
     GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
     EMBEDDING_DIMENSION: int = 3072          # gemini-embedding-001 output dimension
     EMBEDDING_BATCH_SIZE: int = 5          # chunks per embed API call
@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     QUERY_REWRITE_ENABLED: bool = True       # rewrite follow-up questions into standalone search queries
     QUERY_REWRITE_MODEL: str = "openai/gpt-oss-20b"     # small, fast Groq model for that rewrite
     MAX_HISTORY_PAIRS: int = 3             # conversation turns kept in context window
-    RERANKING_ENABLED: bool = True           # second-stage flash cross-encoder reranker
+    RERANKING_ENABLED: bool = True           # second-stage lexical reranker (word, heading and phrase overlap; no model call)
     RERANKING_CANDIDATE_FACTOR: int = 3      # candidate oversampling factor for reranking
     HYBRID_SEARCH_ENABLED: bool = True       # also fetch chunks containing exact identifiers/codes from the question
 

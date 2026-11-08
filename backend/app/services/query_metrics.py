@@ -125,6 +125,7 @@ async def summary(days: int = 7) -> dict:
             "first_token_p50": _percentile([r.first_token_ms for r in ok if r.first_token_ms is not None], 0.5),
             "first_token_p95": _percentile([r.first_token_ms for r in ok if r.first_token_ms is not None], 0.95),
             "retrieval_p50": _percentile([r.retrieval_ms for r in ok if r.retrieval_ms is not None], 0.5),
+            "retrieval_p95": _percentile([r.retrieval_ms for r in ok if r.retrieval_ms is not None], 0.95),
         },
         "models": [
             {

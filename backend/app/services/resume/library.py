@@ -59,18 +59,18 @@ def extract_text(content: bytes, filename: str) -> tuple[str, str]:
         except Exception as exc:
             raise ValueError(f"Cannot open PDF: {exc}") from exc
         with doc:
-            text = "\n".join(page.get_text("text", sort=True) for page in doc)
+            text = "\n".join(page.get_text("text", sort=True) for page in doc)  # type: ignore[attr-defined]
         return text.strip(), "pdf"
 
     if ext == "docx":
         from docx import Document as DocxDocument
 
         try:
-            doc = DocxDocument(io.BytesIO(content))
+            word_doc = DocxDocument(io.BytesIO(content))
         except Exception as exc:
             raise ValueError(f"Cannot open DOCX: {exc}") from exc
-        lines = [p.text for p in doc.paragraphs if p.text.strip()]
-        for table in doc.tables:
+        lines = [p.text for p in word_doc.paragraphs if p.text.strip()]
+        for table in word_doc.tables:
             for row in table.rows:
                 lines.append(" | ".join(c.text.strip() for c in row.cells if c.text.strip()))
         return "\n".join(lines).strip(), "docx"

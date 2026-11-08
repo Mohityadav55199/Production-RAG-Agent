@@ -117,8 +117,9 @@ async def requeue_unfinished() -> int:
             update(IngestionJob).where(IngestionJob.status == "running").values(status="queued", locked_at=None)
         )
         queued = await session.scalar(select(text("count(*)")).select_from(IngestionJob))
-    if result.rowcount:
-        logger.info("Re-queued %d upload(s) interrupted by a restart", result.rowcount)
+    requeued = getattr(result, "rowcount", 0)
+    if requeued:
+        logger.info("Re-queued %d upload(s) interrupted by a restart", requeued)
     return int(queued or 0)
 
 

@@ -169,7 +169,7 @@ class Component:
     key: str
     label: str
     score: int          # 0-100
-    weight: int         # percent of total
+    weight: float       # percent of total (redistributed, so not always whole)
     details: str = ""
     findings: list[str] = field(default_factory=list)
 
@@ -370,7 +370,7 @@ def fallback_jd_analysis(jd_text: str) -> JDAnalysis:
 
 # ── Components ───────────────────────────────────────────────────────────────
 
-def _keyword_component(text: str, jd: JDAnalysis, weight: int) -> tuple[Component, list[str], list[str], list[str]]:
+def _keyword_component(text: str, jd: JDAnalysis, weight: float) -> tuple[Component, list[str], list[str], list[str]]:
     must = list(dict.fromkeys(jd.must_have))
     nice = [t for t in dict.fromkeys(jd.nice_to_have) if t not in must]
     matched = [t for t in must + nice if term_in_text(t, text)]
@@ -390,7 +390,7 @@ def _keyword_component(text: str, jd: JDAnalysis, weight: int) -> tuple[Componen
     return Component("keywords", "Keyword match", score, weight, detail, findings), matched, missing_must, missing_nice
 
 
-def _parsing_component(text: str, meta: dict | None, weight: int) -> Component:
+def _parsing_component(text: str, meta: dict | None, weight: float) -> Component:
     checks: list[tuple[str, bool, int]] = []  # (finding if failed, passed, points)
     checks.append(("No email address found in the extracted text.", bool(re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", text)), 15))
     checks.append(("No phone number found in the extracted text.", bool(re.search(r"\+?\d[\d\s().-]{8,}\d", text)), 10))
@@ -430,7 +430,7 @@ def _bullets(text: str) -> list[str]:
     return out
 
 
-def _format_component(text: str, meta: dict | None, plain_bullets: list[str] | None, weight: int) -> Component:
+def _format_component(text: str, meta: dict | None, plain_bullets: list[str] | None, weight: float) -> Component:
     findings: list[str] = []
     points = 0
 
@@ -477,7 +477,7 @@ def build_report(
 ) -> AtsReport:
     """Score resume text. ``meta`` comes from pdf_text_and_meta; ``fit`` = (0-100, reason) from the LLM judge."""
     has_jd = jd is not None
-    weights = dict(WEIGHTS_WITH_JD if has_jd else WEIGHTS_NO_JD)
+    weights: dict[str, float] = dict(WEIGHTS_WITH_JD if has_jd else WEIGHTS_NO_JD)
     if has_jd and fit is None:           # redistribute the fit weight proportionally
         extra = weights.pop("fit")
         rest = sum(weights.values())
@@ -488,7 +488,7 @@ def build_report(
     missing_must: list[str] = []
     missing_nice: list[str] = []
 
-    if has_jd:
+    if jd is not None:
         comp, matched, missing_must, missing_nice = _keyword_component(text, jd, weights["keywords"])
         components.append(comp)
     components.append(_parsing_component(text, meta, weights["parsing"]))

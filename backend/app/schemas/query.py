@@ -45,7 +45,7 @@ class QueryRequest(BaseModel):
     )
     model: str | None = Field(
         None,
-        description="Optional LLM model override (e.g., 'openai/gpt-oss-120b', 'gemini-2.5-flash').",
+        description="Optional LLM model override (e.g., 'openai/gpt-oss-120b', 'gemini-3.5-flash').",
     )
     images: list[ImageInput] = Field(
         default_factory=list,
@@ -100,6 +100,13 @@ class SourceCitation(BaseModel):
 class SSEThinking(BaseModel):
     """Emitted immediately to signal the pipeline has started."""
     type: Literal["thinking"] = "thinking"
+
+
+class SSEStep(BaseModel):
+    """Progress marker: which stage of the pipeline is running (rewriting, searching, generating)."""
+    type: Literal["step"] = "step"
+    step: str
+    label: str
 
 
 class SSESources(BaseModel):

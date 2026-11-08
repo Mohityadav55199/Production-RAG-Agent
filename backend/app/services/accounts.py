@@ -87,7 +87,8 @@ async def ensure_admin() -> None:
             demoted = await session.execute(
                 update(User).where(User.id != user.id, User.is_admin.is_(True)).values(is_admin=False)
             )
-            if demoted.rowcount:
-                logger.warning("Removed the admin flag from %d other account(s)", demoted.rowcount)
+            removed = getattr(demoted, "rowcount", 0)
+            if removed:
+                logger.warning("Removed the admin flag from %d other account(s)", removed)
     except Exception:
         logger.exception("Could not set up the administrator account")

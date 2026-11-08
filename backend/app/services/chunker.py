@@ -134,7 +134,7 @@ def _parse_semantic_blocks(text: str) -> list[SemanticBlock]:
     
     current_section = None
     current_heading = None
-    current_lines = []
+    current_lines: list[str] = []
 
     def flush_block():
         if current_lines:
