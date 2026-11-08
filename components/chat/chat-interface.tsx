@@ -214,6 +214,11 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
               )
             );
           },
+          onStep: ({ label }) => {
+            setMessages((prev) =>
+              prev.map((msg) => (msg.id === assistantId ? { ...msg, stepLabel: label } : msg))
+            );
+          },
           onModelSwitched: (fallbackNotice) => {
             setMessages((prev) =>
               prev.map((msg) =>
@@ -435,10 +440,13 @@ export function ChatInterface({ mode }: ChatInterfaceProps) {
                         {message.content ? (
                           <SafeMarkdown>{message.content}</SafeMarkdown>
                         ) : message.isStreaming ? (
-                          <span className="inline-flex items-center gap-1 text-muted-foreground" role="status" aria-label="Thinking">
-                            <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.2s]" />
-                            <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.1s]" />
-                            <span className="size-1.5 animate-bounce rounded-full bg-current" />
+                          <span className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
+                            <span className="inline-flex items-center gap-1" aria-hidden="true">
+                              <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.2s]" />
+                              <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.1s]" />
+                              <span className="size-1.5 animate-bounce rounded-full bg-current" />
+                            </span>
+                            <span>{message.stepLabel ?? "Thinking"}</span>
                           </span>
                         ) : null}
                         {message.isStreaming && message.content && (

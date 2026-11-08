@@ -12,6 +12,8 @@ export interface StreamHandlers {
   onConversation?: (conversationId: string) => void;
   onDiff?: (diff: string) => void;
   onModelSwitched?: (notice: { model: string; provider?: string; message: string }) => void;
+  /** Which pipeline stage is running (rewriting, searching, generating). */
+  onStep?: (step: { step: string; label: string }) => void;
 }
 
 export interface StreamQueryOptions extends StreamHandlers {
@@ -52,6 +54,11 @@ function parseSseChunk(chunk: string, handlers: StreamHandlers) {
           provider: parsed.provider ? String(parsed.provider) : undefined,
           message: String(parsed.message ?? "Switched to fallback model"),
         });
+        continue;
+      }
+
+      if (type === "step") {
+        handlers.onStep?.({ step: String(parsed.step ?? ""), label: String(parsed.label ?? "") });
         continue;
       }
 

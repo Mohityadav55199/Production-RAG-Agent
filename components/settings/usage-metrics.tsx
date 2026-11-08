@@ -20,6 +20,7 @@ interface MetricsSummary {
     first_token_p50: number | null;
     first_token_p95: number | null;
     retrieval_p50: number | null;
+    retrieval_p95?: number | null;
   };
   models: {
     provider: string | null;
@@ -65,7 +66,7 @@ export function UsageMetrics() {
         { label: "Questions", value: data.questions.toLocaleString() },
         { label: "Answer time (median)", value: seconds(data.latency_ms.total_p50), hint: `slowest 5%: ${seconds(data.latency_ms.total_p95)}` },
         { label: "First word (median)", value: seconds(data.latency_ms.first_token_p50), hint: `slowest 5%: ${seconds(data.latency_ms.first_token_p95)}` },
-        { label: "Search time (median)", value: seconds(data.latency_ms.retrieval_p50) },
+        { label: "Search time (median)", value: seconds(data.latency_ms.retrieval_p50), hint: `slowest 5%: ${seconds(data.latency_ms.retrieval_p95 ?? null)}` },
         {
           label: "Errors",
           value: data.errors.toLocaleString(),

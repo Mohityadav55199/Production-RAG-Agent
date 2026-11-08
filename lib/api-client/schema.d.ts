@@ -4,18 +4,15 @@
  */
 
 export interface paths {
-    "/health": {
+    "/admin/claude": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * System health check
-         * @description Returns the connectivity status for Gemini, PostgreSQL, and Qdrant. Overall `status` is `ok` only when all services are reachable.
-         */
-        get: operations["health_check_health_get"];
+        /** Test the Claude API key with one small request */
+        get: operations["claude_check_admin_claude_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -24,7 +21,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/upload": {
+    "/admin/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** All answer ratings (administrator) */
+        get: operations["list_feedback_admin_feedback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Question latency, token use, error and fallback rates */
+        get: operations["query_metrics_admin_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show how this request reached the server (client address detection) */
+        get: operations["network_check_admin_network_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download a stored image (thumbnail or full size) */
+        get: operations["download_asset_assets__asset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login": {
         parameters: {
             query?: never;
             header?: never;
@@ -33,36 +98,23 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Upload and ingest documents
-         * @description Accept one or more files. Each file is:
-         *     1. Validated (size limit and supported format)
-         *     2. Text-extracted with the corresponding parser
-         *     3. Recursively chunked
-         *     4. Embedded via Gemini text-embedding-004
-         *     5. Stored in Qdrant (vectors) and PostgreSQL (metadata)
-         *
-         *     A per-file status is returned regardless of individual failures.
-         */
-        post: operations["upload_documents_upload_post"];
+        /** Login */
+        post: operations["login_auth_login_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/documents": {
+    "/auth/me": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * List all uploaded documents
-         * @description Returns a paginated list of all documents, sorted by upload date descending. Optionally filter by processing status.
-         */
-        get: operations["list_documents_endpoint_documents_get"];
+        /** Me */
+        get: operations["me_auth_me_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -71,7 +123,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/documents/{document_id}": {
+    "/auth/resend-verification": {
         parameters: {
             query?: never;
             header?: never;
@@ -80,12 +132,43 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
-        /**
-         * Delete a document and all its vectors
-         * @description Permanently removes the document record from PostgreSQL and all associated vector embeddings from Qdrant. This operation is **irreversible**. Qdrant vectors are deleted first so the PostgreSQL record is preserved on vector-store failure, enabling safe retries.
-         */
-        delete: operations["delete_document_endpoint_documents__document_id__delete"];
+        /** Send the confirmation link again */
+        post: operations["resend_verification_auth_resend_verification_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Signup */
+        post: operations["signup_auth_signup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/verify-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm an email address with the token from the link */
+        post: operations["verify_email_auth_verify_email_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -141,6 +224,209 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compare two code snippets, projects or documents (SSE stream) */
+        post: operations["compare_endpoint_compare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/compare/extract-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the code out of a screenshot
+         * @description Gemini transcribes the code exactly (indentation included); without a key, OCR is used, which is
+         *     rougher. The caller shows the text for review before comparing.
+         */
+        post: operations["extract_code_compare_extract_code_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all uploaded documents
+         * @description Returns a paginated list of all documents, sorted by upload date descending. Optionally filter by processing status.
+         */
+        get: operations["list_documents_endpoint_documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a document and all its vectors
+         * @description Permanently removes the document record from PostgreSQL and all associated vector embeddings from Qdrant. This operation is **irreversible**. Qdrant vectors are deleted first so the PostgreSQL record is preserved on vector-store failure, enabling safe retries.
+         */
+        delete: operations["delete_document_endpoint_documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rate an answer */
+        post: operations["submit_feedback_feedback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System health check
+         * @description Returns the connectivity status for Gemini, PostgreSQL, and Qdrant. Overall `status` is `ok` only when all services are reachable.
+         */
+        get: operations["health_check_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List imported projects with indexing progress */
+        get: operations["get_projects_projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import a GitHub repository */
+        post: operations["import_github_projects_github_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List imported projects and standalone documents
+         * @description Used by the Chat scope picker and the Compare view.
+         */
+        get: operations["get_sources_projects_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import a project .zip archive */
+        post: operations["import_zip_projects_zip_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an imported project and all its files */
+        delete: operations["remove_project_projects__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/query": {
         parameters: {
             query?: never;
@@ -158,6 +444,7 @@ export interface paths {
          *
          *     **Event types** (in order):
          *     - `thinking` — pipeline started
+         *     - `step`     — progress marker (`rewriting`, `searching`, `generating`) with a readable `label`
          *     - `sources`  — retrieved document chunks (before any tokens)
          *     - `chunk`    — one LLM token or small token batch
          *     - `done`     — answer complete; includes `conversation_id` for follow-up
@@ -172,10 +459,427 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/resume/ats-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Estimate the ATS score of any resume file */
+        post: operations["ats_check_resume_ats_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/extract-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extract text from a file (used for uploading a job description) */
+        post: operations["extract_text_endpoint_resume_extract_text_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List past tailoring runs */
+        get: operations["list_generations_resume_generations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/generations/{generation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Details of a run: editable draft, per-bullet sources, gap report */
+        get: operations["get_generation_resume_generations__generation_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete a run */
+        delete: operations["delete_generation_resume_generations__generation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/generations/{generation_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark this run as applied in the job tracker
+         * @description Create the tracker entry for this run, or move the existing one to "applied" (never backwards).
+         */
+        post: operations["mark_applied_resume_generations__generation_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/generations/{generation_id}/cover-letter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cover letter for a run (saved; regenerate on request) */
+        post: operations["generation_cover_letter_resume_generations__generation_id__cover_letter_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/generations/{generation_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download or preview the PDF (any draft that compiled) */
+        get: operations["download_pdf_resume_generations__generation_id__pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/generations/{generation_id}/recruiter-message": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recruiter message for a run (saved per platform) */
+        post: operations["generation_recruiter_message_resume_generations__generation_id__recruiter_message_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/generations/{generation_id}/regenerate-bullet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Grounded alternatives for one bullet */
+        post: operations["regenerate_one_bullet_resume_generations__generation_id__regenerate_bullet_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/generations/{generation_id}/rescore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-render and re-score an edited draft */
+        post: operations["rescore_resume_generations__generation_id__rescore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/generations/{generation_id}/tex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download the LaTeX source (any draft that compiled) */
+        get: operations["download_tex_resume_generations__generation_id__tex_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List saved jobs and applications */
+        get: operations["list_jobs_resume_jobs_get"];
+        put?: never;
+        /** Save a job application */
+        post: operations["create_job_resume_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get job application detail */
+        get: operations["get_job_detail_resume_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete a job application */
+        delete: operations["delete_job_resume_jobs__job_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update a job application */
+        patch: operations["update_job_resume_jobs__job_id__patch"];
+        trace?: never;
+    };
+    "/resume/layouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your saved layouts */
+        get: operations["list_layouts_resume_layouts_get"];
+        put?: never;
+        /** Save the current layout under a name */
+        post: operations["save_layout_resume_layouts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/layouts/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a layout from your own resume: a .tex (its template) or a .pdf (its look) */
+        post: operations["import_layout_resume_layouts_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/layouts/{layout_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a saved layout */
+        delete: operations["delete_layout_resume_layouts__layout_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List resumes in the library */
+        get: operations["list_library_resume_library_get"];
+        put?: never;
+        /** Add a resume to the library (file upload or pasted text) */
+        post: operations["add_resume_resume_library_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/library/{resume_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a resume's structured profile */
+        get: operations["get_resume_resume_library__resume_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete a resume and its search index */
+        delete: operations["delete_resume_resume_library__resume_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resume/tailor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tailor a resume to a job description (SSE stream) */
+        post: operations["tailor_resume_tailor_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload and ingest documents
+         * @description Accept one or more files. Each file is:
+         *     1. Validated (size limit and supported format)
+         *     2. Text-extracted with the corresponding parser
+         *     3. Recursively chunked
+         *     4. Embedded via Gemini (gemini-embedding-001)
+         *     5. Stored in Qdrant (vectors) and PostgreSQL (metadata)
+         *
+         *     A per-file status is returned regardless of individual failures.
+         */
+        post: operations["upload_documents_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AuthResponse */
+        AuthResponse: {
+            /** Device */
+            device: string;
+            /** Token */
+            token: string;
+            /** User */
+            user: {
+                [key: string]: unknown;
+            };
+        };
+        /** Body_add_resume_resume_library_post */
+        Body_add_resume_resume_library_post: {
+            /** File */
+            file?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Text */
+            text?: string | null;
+        };
+        /** Body_ats_check_resume_ats_check_post */
+        Body_ats_check_resume_ats_check_post: {
+            /** File */
+            file: string;
+            /** Jd Text */
+            jd_text?: string | null;
+        };
+        /** Body_extract_code_compare_extract_code_post */
+        Body_extract_code_compare_extract_code_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_extract_text_endpoint_resume_extract_text_post */
+        Body_extract_text_endpoint_resume_extract_text_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_import_layout_resume_layouts_import_post */
+        Body_import_layout_resume_layouts_import_post: {
+            /** File */
+            file?: string | null;
+            /** Latex Text */
+            latex_text?: string | null;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+        };
+        /** Body_import_zip_projects_zip_post */
+        Body_import_zip_projects_zip_post: {
+            /**
+             * File
+             * @description Project folder compressed as .zip
+             */
+            file: string;
+        };
         /** Body_upload_documents_upload_post */
         Body_upload_documents_upload_post: {
             /**
@@ -183,6 +887,32 @@ export interface components {
              * @description One or more files (max 50 MB each).
              */
             files: string[];
+        };
+        /** BulletRequest */
+        BulletRequest: {
+            /** Already Used */
+            already_used?: string[];
+            /**
+             * Current
+             * @description The bullet to rewrite; empty asks for a new one.
+             * @default
+             */
+            current: string;
+            /**
+             * Instruction
+             * @default
+             */
+            instruction: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "experience" | "project";
+            /**
+             * Name
+             * @description Company (experience) or project name.
+             */
+            name: string;
         };
         /**
          * CollectionCreate
@@ -196,27 +926,27 @@ export interface components {
          */
         CollectionCreate: {
             /**
-             * Name
-             * @description Collection name (alphanumeric, underscores, hyphens only).
-             */
-            name: string;
-            /**
-             * Vector Size
-             * @description Dimensionality of vectors (default: 768 for text-embedding-004).
-             * @default 768
-             */
-            vector_size: number;
-            /**
              * @description Distance metric used for similarity search.
              * @default Cosine
              */
             distance: components["schemas"]["DistanceMetric"];
+            /**
+             * Name
+             * @description Collection name (alphanumeric, underscores, hyphens only).
+             */
+            name: string;
             /**
              * On Disk Payload
              * @description Store payload on disk to reduce RAM usage.
              * @default true
              */
             on_disk_payload: boolean;
+            /**
+             * Vector Size
+             * @description Dimensionality of vectors (default: 768 for text-embedding-004).
+             * @default 768
+             */
+            vector_size: number;
         };
         /**
          * CollectionDeleteResponse
@@ -227,13 +957,13 @@ export interface components {
          *     }
          */
         CollectionDeleteResponse: {
-            /** Name */
-            name: string;
             /**
              * Message
              * @default Collection deleted successfully.
              */
             message: string;
+            /** Name */
+            name: string;
         };
         /**
          * CollectionInfo
@@ -252,20 +982,13 @@ export interface components {
          *     }
          */
         CollectionInfo: {
-            /** Name */
-            name: string;
-            /** Status */
-            status: string;
-            /**
-             * Vector Count
-             * @default 0
-             */
-            vector_count: number;
             /**
              * Indexed Vectors Count
              * @default 0
              */
             indexed_vectors_count: number;
+            /** Name */
+            name: string;
             /**
              * Points Count
              * @default 0
@@ -276,6 +999,13 @@ export interface components {
              * @default 0
              */
             segments_count: number;
+            /** Status */
+            status: string;
+            /**
+             * Vector Count
+             * @default 0
+             */
+            vector_count: number;
             vectors_config?: components["schemas"]["VectorsConfig"] | null;
         };
         /**
@@ -283,10 +1013,10 @@ export interface components {
          * @description Paginated list of all Qdrant collections.
          */
         CollectionListResponse: {
-            /** Total */
-            total: number;
             /** Collections */
             collections: components["schemas"]["CollectionSummary"][];
+            /** Total */
+            total: number;
         };
         /**
          * CollectionSummary
@@ -295,11 +1025,6 @@ export interface components {
         CollectionSummary: {
             /** Name */
             name: string;
-            /**
-             * Vector Count
-             * @default 0
-             */
-            vector_count: number;
             /**
              * Points Count
              * @default 0
@@ -310,6 +1035,68 @@ export interface components {
              * @default unknown
              */
             status: string;
+            /**
+             * Vector Count
+             * @default 0
+             */
+            vector_count: number;
+        };
+        /** CompareRequest */
+        CompareRequest: {
+            /**
+             * Focus
+             * @description What to focus the comparison on.
+             */
+            focus?: string | null;
+            left: components["schemas"]["CompareSide"];
+            /** Model */
+            model?: string | null;
+            /** Provider */
+            provider?: string | null;
+            right: components["schemas"]["CompareSide"];
+        };
+        /** CompareSide */
+        CompareSide: {
+            /**
+             * Content
+             * @description Pasted code or text (type='text').
+             */
+            content?: string | null;
+            /** Document Id */
+            document_id?: string | null;
+            /**
+             * Label
+             * @description Display name for pasted text.
+             */
+            label?: string | null;
+            /** Project */
+            project?: string | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "text" | "project" | "document";
+        };
+        /** CoverLetterOptions */
+        CoverLetterOptions: {
+            /**
+             * Regenerate
+             * @description Write a new one even if one is saved for this run.
+             * @default false
+             */
+            regenerate: boolean;
+        };
+        /** Credentials */
+        Credentials: {
+            /**
+             * Device
+             * @description Trusted-device token from a previous login.
+             */
+            device?: string | null;
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
         };
         /**
          * DistanceMetric
@@ -351,28 +1138,40 @@ export interface components {
          *     }
          */
         DocumentListResponse: {
-            /**
-             * Total
-             * @description Total documents matching the filter
-             */
-            total: number;
-            /**
-             * Page
-             * @description Current page (1-indexed)
-             */
-            page: number;
+            /** Documents */
+            documents: components["schemas"]["DocumentSummary"][];
             /**
              * Limit
              * @description Items per page
              */
             limit: number;
             /**
+             * Page
+             * @description Current page (1-indexed)
+             */
+            page: number;
+            /**
              * Pages
              * @description Total number of pages
              */
             pages: number;
-            /** Documents */
-            documents: components["schemas"]["DocumentSummary"][];
+            /**
+             * Storage Limit
+             * @description The user's storage allowance in bytes (0 = unlimited)
+             * @default 0
+             */
+            storage_limit: number;
+            /**
+             * Storage Used
+             * @description Bytes used by all of the user's documents and projects
+             * @default 0
+             */
+            storage_used: number;
+            /**
+             * Total
+             * @description Total documents matching the filter
+             */
+            total: number;
         };
         /**
          * DocumentResult
@@ -388,25 +1187,25 @@ export interface components {
          *     }
          */
         DocumentResult: {
-            /** Document Id */
-            document_id?: string | null;
-            /** Filename */
-            filename: string;
-            status: components["schemas"]["DocumentStatus"];
-            /** Page Count */
-            page_count?: number | null;
             /** Chunk Count */
             chunk_count?: number | null;
-            /** File Size Bytes */
-            file_size_bytes?: number | null;
-            /** Error */
-            error?: string | null;
             /** Created At */
             created_at?: string | null;
-            /** Message */
-            message?: string | null;
+            /** Document Id */
+            document_id?: string | null;
+            /** Error */
+            error?: string | null;
             /** Existing Document Id */
             existing_document_id?: string | null;
+            /** File Size Bytes */
+            file_size_bytes?: number | null;
+            /** Filename */
+            filename: string;
+            /** Message */
+            message?: string | null;
+            /** Page Count */
+            page_count?: number | null;
+            status: components["schemas"]["DocumentStatus"];
             /** Uploaded At */
             uploaded_at?: string | null;
         };
@@ -420,32 +1219,113 @@ export interface components {
          * @description Lightweight document row — used in paginated list responses.
          */
         DocumentSummary: {
-            /**
-             * Document Id
-             * Format: uuid
-             */
-            document_id: string;
-            /** Filename */
-            filename: string;
-            status: components["schemas"]["DocumentStatus"];
-            /** Page Count */
-            page_count: number;
             /** Chunk Count */
             chunk_count: number;
-            /** File Size Bytes */
-            file_size_bytes: number;
-            /** Error */
-            error?: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
             /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Error */
+            error?: string | null;
+            /** File Size Bytes */
+            file_size_bytes: number;
+            /** Filename */
+            filename: string;
+            /** Page Count */
+            page_count: number;
+            /** Preview Asset Id */
+            preview_asset_id?: string | null;
+            status: components["schemas"]["DocumentStatus"];
+            /**
              * Updated At
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** Education */
+        Education: {
+            /**
+             * Dates
+             * @default
+             */
+            dates: string;
+            /**
+             * Degree
+             * @default
+             */
+            degree: string;
+            /**
+             * Details
+             * @default
+             */
+            details: string;
+            /**
+             * Location
+             * @default
+             */
+            location: string;
+            /**
+             * School
+             * @default
+             */
+            school: string;
+        };
+        /** Experience */
+        Experience: {
+            /** Bullets */
+            bullets?: string[];
+            /**
+             * Company
+             * @default
+             */
+            company: string;
+            /**
+             * Dates
+             * @default
+             */
+            dates: string;
+            /**
+             * Location
+             * @default
+             */
+            location: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /** FeedbackRequest */
+        FeedbackRequest: {
+            /** Answer */
+            answer: string;
+            /** Cited Files */
+            cited_files?: string[];
+            /** Comment */
+            comment?: string | null;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /** Question */
+            question: string;
+            /**
+             * Rating
+             * @enum {string}
+             */
+            rating: "up" | "down";
+        };
+        /** GithubImportRequest */
+        GithubImportRequest: {
+            /**
+             * Url
+             * @description https://github.com/owner/repo (optionally /tree/<branch>)
+             */
+            url: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -463,15 +1343,12 @@ export interface components {
          */
         HealthResponse: {
             /**
-             * Status
-             * @enum {string}
-             */
-            status: "ok" | "degraded";
-            /**
              * Gemini
              * @enum {string}
              */
             gemini: "connected" | "not_connected";
+            /** Groq */
+            groq?: ("connected" | "not_connected") | null;
             /**
              * Postgres
              * @enum {string}
@@ -482,6 +1359,183 @@ export interface components {
              * @enum {string}
              */
             qdrant: "connected" | "not_connected";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "degraded";
+        };
+        /**
+         * ImageInput
+         * @description One image attached to a question. The server re-encodes it; the declared type is not trusted.
+         */
+        ImageInput: {
+            /**
+             * Data
+             * @description Base64 image bytes, without a data: prefix.
+             */
+            data: string;
+            /**
+             * Mime
+             * @enum {string}
+             */
+            mime: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+        };
+        /** JobCreateRequest */
+        JobCreateRequest: {
+            /** Applied Date */
+            applied_date?: string | null;
+            /** Ats Score */
+            ats_score?: number | null;
+            /** Company */
+            company: string;
+            /** Jd Text */
+            jd_text?: string | null;
+            /** Job Title */
+            job_title: string;
+            /** Job Url */
+            job_url?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Resume Generation Id */
+            resume_generation_id?: string | null;
+            /** Resume Version Name */
+            resume_version_name?: string | null;
+            /** Salary */
+            salary?: string | null;
+            /**
+             * Status
+             * @default saved
+             * @enum {string}
+             */
+            status: "saved" | "applied" | "interviewing" | "offered" | "rejected" | "archived";
+        };
+        /** JobUpdateRequest */
+        JobUpdateRequest: {
+            /** Applied Date */
+            applied_date?: string | null;
+            /** Ats Score */
+            ats_score?: number | null;
+            /** Company */
+            company?: string | null;
+            /** Jd Text */
+            jd_text?: string | null;
+            /** Job Title */
+            job_title?: string | null;
+            /** Job Url */
+            job_url?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Resume Generation Id */
+            resume_generation_id?: string | null;
+            /** Resume Version Name */
+            resume_version_name?: string | null;
+            /** Salary */
+            salary?: string | null;
+            /** Status */
+            status?: ("saved" | "applied" | "interviewing" | "offered" | "rejected" | "archived") | null;
+        };
+        /** LayoutCreate */
+        LayoutCreate: {
+            /** Name */
+            name: string;
+            options: components["schemas"]["RenderOptions"];
+        };
+        /** OutreachOptions */
+        OutreachOptions: {
+            /**
+             * Platform
+             * @default linkedin
+             * @enum {string}
+             */
+            platform: "linkedin" | "email";
+            /**
+             * Regenerate
+             * @description Write a new one even if one is saved for this run.
+             * @default false
+             */
+            regenerate: boolean;
+        };
+        /** Profile */
+        Profile: {
+            /** Achievements */
+            achievements?: string[];
+            /** Certifications */
+            certifications?: string[];
+            /** Education */
+            education?: components["schemas"]["Education"][];
+            /**
+             * Email
+             * @default
+             */
+            email: string;
+            /** Experience */
+            experience?: components["schemas"]["Experience"][];
+            /** Links */
+            links?: string[];
+            /**
+             * Location
+             * @default
+             */
+            location: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Phone
+             * @default
+             */
+            phone: string;
+            /** Projects */
+            projects?: components["schemas"]["Project"][];
+            /** Skills */
+            skills?: {
+                [key: string]: string[];
+            };
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+        };
+        /** Project */
+        Project: {
+            /** Bullets */
+            bullets?: string[];
+            /**
+             * Link
+             * @default
+             */
+            link: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Tech
+             * @default
+             */
+            tech: string;
+        };
+        /** ProjectImportResponse */
+        ProjectImportResponse: {
+            /** Files Queued */
+            files_queued: number;
+            /** Files Skipped */
+            files_skipped: number;
+            /** Message */
+            message: string;
+            /** Project Name */
+            project_name: string;
+            /** Truncated */
+            truncated: boolean;
         };
         /**
          * QueryRequest
@@ -493,21 +1547,128 @@ export interface components {
          */
         QueryRequest: {
             /**
-             * Query
-             * @description The user's natural-language question.
+             * Answer Style
+             * @description 'detailed' gives thorough, structured explanations; 'concise' gives short answers.
+             * @default detailed
+             * @enum {string}
              */
-            query: string;
+            answer_style: "detailed" | "concise";
             /**
              * Conversation Id
              * @description UUID of an existing conversation to continue. Omit (or send null) to start a new conversation.
              */
             conversation_id?: string | null;
             /**
+             * Document Id
+             * @description Restrict retrieval to a single document.
+             */
+            document_id?: string | null;
+            /**
+             * Images
+             * @description Up to 3 images to ask about (screenshots, diagrams, photos). Needs a Gemini API key.
+             */
+            images?: components["schemas"]["ImageInput"][];
+            /**
+             * Model
+             * @description Optional LLM model override (e.g., 'openai/gpt-oss-120b', 'gemini-3.5-flash').
+             */
+            model?: string | null;
+            /**
+             * Project
+             * @description Restrict retrieval to one imported code project (its name, e.g. 'my-repo').
+             */
+            project?: string | null;
+            /**
+             * Provider
+             * @description Optional LLM provider override ('groq', 'gemini').
+             */
+            provider?: string | null;
+            /**
+             * Query
+             * @description The user's natural-language question.
+             */
+            query: string;
+            /**
+             * Scope Kind
+             * @description When no project/document is chosen: search everything, only uploaded documents, or only code projects.
+             * @default all
+             * @enum {string}
+             */
+            scope_kind: "all" | "documents" | "projects";
+            /**
              * Top K
              * @description Number of document chunks to retrieve from the vector store.
              * @default 5
              */
             top_k: number;
+        };
+        /**
+         * RenderOptions
+         * @description Layout choices for the generated PDF. Every field is a fixed whitelist, so these values can be put into
+         *     LaTeX without escaping and a client can never inject commands through them.
+         *
+         *     ``preamble`` is the only free text: the LaTeX preamble of a base template the user uploaded. The server sets
+         *     it from the user's saved layout (``layout_id``) after validating it; a value sent by a client is discarded.
+         */
+        RenderOptions: {
+            /**
+             * Font
+             * @default serif
+             * @enum {string}
+             */
+            font: "serif" | "sans";
+            /**
+             * Font Pt
+             * @default 10
+             * @enum {integer}
+             */
+            font_pt: 10 | 11 | 12;
+            /** Layout Id */
+            layout_id?: string | null;
+            /** Layout Name */
+            layout_name?: string | null;
+            /**
+             * Margin In
+             * @default 0.6
+             * @enum {number}
+             */
+            margin_in: 0.5 | 0.6 | 0.75 | 1;
+            /** Preamble */
+            preamble?: string | null;
+            /** Section Order */
+            section_order?: ("summary" | "skills" | "experience" | "projects" | "education" | "certifications" | "achievements")[] | null;
+            /**
+             * Template
+             * @default classic
+             * @enum {string}
+             */
+            template: "classic" | "compact" | "skills_first" | "student";
+        };
+        /** RescoreRequest */
+        RescoreRequest: {
+            draft: components["schemas"]["Profile"];
+            options?: components["schemas"]["RenderOptions"] | null;
+        };
+        /** TailorRequest */
+        TailorRequest: {
+            /**
+             * Jd Text
+             * @description The job description.
+             */
+            jd_text: string;
+            /** @description Template, font size and margins of the PDF. */
+            options?: components["schemas"]["RenderOptions"] | null;
+            /**
+             * Output Name
+             * @description Name for the generated PDF/LaTeX files.
+             * @default resume
+             */
+            output_name: string;
+            /**
+             * Resume Ids
+             * @description Library resumes to use; default is all.
+             */
+            resume_ids?: string[] | null;
         };
         /**
          * UploadResponse
@@ -520,26 +1681,30 @@ export interface components {
          *     }
          */
         UploadResponse: {
+            /** Documents */
+            documents: components["schemas"]["DocumentResult"][];
             /**
-             * Total
-             * @description Total files submitted
+             * Failed
+             * @description Files that encountered errors
              */
-            total: number;
+            failed: number;
             /**
              * Succeeded
              * @description Files processed successfully
              */
             succeeded: number;
             /**
-             * Failed
-             * @description Files that encountered errors
+             * Total
+             * @description Total files submitted
              */
-            failed: number;
-            /** Documents */
-            documents: components["schemas"]["DocumentResult"][];
+            total: number;
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -552,10 +1717,15 @@ export interface components {
          * @description Vector configuration details for a collection.
          */
         VectorsConfig: {
-            /** Size */
-            size: number;
             /** Distance */
             distance: string;
+            /** Size */
+            size: number;
+        };
+        /** VerifyRequest */
+        VerifyRequest: {
+            /** Token */
+            token: string;
         };
     };
     responses: never;
@@ -566,7 +1736,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    health_check_health_get: {
+    claude_check_admin_claude_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -581,12 +1751,136 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
     };
-    upload_documents_upload_post: {
+    list_feedback_admin_feedback_get: {
+        parameters: {
+            query?: {
+                rating?: ("up" | "down") | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_metrics_admin_metrics_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    network_check_admin_network_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    download_asset_assets__asset_id__get: {
+        parameters: {
+            query?: {
+                size?: "thumb" | "full";
+            };
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_auth_login_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -595,7 +1889,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_documents_upload_post"];
+                "application/json": components["schemas"]["Credentials"];
             };
         };
         responses: {
@@ -605,7 +1899,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UploadResponse"];
+                    "application/json": components["schemas"]["AuthResponse"];
                 };
             };
             /** @description Validation Error */
@@ -619,16 +1913,9 @@ export interface operations {
             };
         };
     };
-    list_documents_endpoint_documents_get: {
+    me_auth_me_get: {
         parameters: {
-            query?: {
-                /** @description Page number (1-indexed). */
-                page?: number;
-                /** @description Items per page (max 100). */
-                limit?: number;
-                /** @description Filter by document status. */
-                status?: components["schemas"]["DocumentStatus"] | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -641,7 +1928,55 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentListResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    resend_verification_auth_resend_verification_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    signup_auth_signup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Credentials"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
                 };
             };
             /** @description Validation Error */
@@ -655,17 +1990,18 @@ export interface operations {
             };
         };
     };
-    delete_document_endpoint_documents__document_id__delete: {
+    verify_email_auth_verify_email_post: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description UUID of the document to delete. */
-                document_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -673,7 +2009,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentDeleteResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -804,6 +2142,340 @@ export interface operations {
             };
         };
     };
+    compare_endpoint_compare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompareRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extract_code_compare_extract_code_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_extract_code_compare_extract_code_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_documents_endpoint_documents_get: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed). */
+                page?: number;
+                /** @description Items per page (max 100). */
+                limit?: number;
+                /** @description Filter by document status. */
+                status?: components["schemas"]["DocumentStatus"] | null;
+                /** @description 'documents' = standalone uploads, 'projects' = imported code files. */
+                kind?: ("documents" | "projects") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_endpoint_documents__document_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the document to delete. */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_feedback_feedback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    health_check_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    get_projects_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    import_github_projects_github_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GithubImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sources_projects_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    import_zip_projects_zip_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_zip_projects_zip_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_project_projects__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     query_endpoint_query_post: {
         parameters: {
             query?: never;
@@ -832,6 +2504,888 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    ats_check_resume_ats_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_ats_check_resume_ats_check_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extract_text_endpoint_resume_extract_text_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_extract_text_endpoint_resume_extract_text_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_generations_resume_generations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_generation_resume_generations__generation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_generation_resume_generations__generation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_applied_resume_generations__generation_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generation_cover_letter_resume_generations__generation_id__cover_letter_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CoverLetterOptions"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_pdf_resume_generations__generation_id__pdf_get: {
+        parameters: {
+            query?: {
+                inline?: boolean;
+            };
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generation_recruiter_message_resume_generations__generation_id__recruiter_message_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OutreachOptions"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    regenerate_one_bullet_resume_generations__generation_id__regenerate_bullet_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulletRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rescore_resume_generations__generation_id__rescore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RescoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_tex_resume_generations__generation_id__tex_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_resume_jobs_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_job_resume_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_detail_resume_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_job_resume_jobs__job_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_job_resume_jobs__job_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_layouts_resume_layouts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    save_layout_resume_layouts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LayoutCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_layout_resume_layouts_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_layout_resume_layouts_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_layout_resume_layouts__layout_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                layout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_library_resume_library_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    add_resume_resume_library_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_add_resume_resume_library_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resume_resume_library__resume_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resume_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_resume_resume_library__resume_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resume_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tailor_resume_tailor_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TailorRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_documents_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_documents_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

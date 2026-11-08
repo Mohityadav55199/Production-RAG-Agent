@@ -59,6 +59,8 @@ export interface ChatMessage {
   /** Images the user attached to this question (local previews only; never stored). */
   attachments?: { id: string; name: string; previewUrl: string }[];
   isStreaming?: boolean;
+  /** Pipeline stage shown while waiting for the first token (for example "Searching your documents"). */
+  stepLabel?: string;
   error?: string;
   /** Active fallback model notification if primary LLM encountered rate limits. */
   fallbackNotice?: { model: string; provider?: string; message: string };
