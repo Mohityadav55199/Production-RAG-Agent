@@ -1,4 +1,5 @@
-import { ArrowLeftRight, Brain, FileUser, Github, Settings, Sparkles } from "lucide-react";
+import { ArrowLeftRight, Brain, FileUser, Settings, Sparkles } from "lucide-react";
+import { Github } from "@/components/icons/brand-icons";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserMenu } from "@/components/layout/user-menu";

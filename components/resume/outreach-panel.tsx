@@ -7,7 +7,6 @@ import {
   Check,
   Copy,
   FileCheck2,
-  Linkedin,
   Mail,
   MessageSquare,
   RefreshCw,
@@ -15,6 +14,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+import { Linkedin } from "@/components/icons/brand-icons";
 import { toast } from "sonner";
 import {
   generateCoverLetter,

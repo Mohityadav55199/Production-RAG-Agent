@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { FileArchive, FolderGit2, Github, Loader2 } from "lucide-react";
+import { FileArchive, FolderGit2, Loader2 } from "lucide-react";
+import { Github } from "@/components/icons/brand-icons";
 import { toast } from "sonner";
 import { importGithubProject, importZipProject } from "@/lib/api/projects";
 import { useApp } from "@/lib/context/app-context";
